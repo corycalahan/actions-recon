@@ -1,0 +1,36 @@
+schema_version = 1
+id    = "runner-version-not-dotcom-latest"
+name  = "Runner Not at Latest Version"
+emoji = "🔄"
+docs  = "https://github.com/actions/runner/releases"
+created = "2026-02-18"
+updated = "2026-02-18"
+
+description = """
+The runner version is below the latest release available for GitHub.com (dotcom).
+
+This tip is informational — GitHub-hosted runners are updated automatically.
+For self-hosted runners, being behind the latest release is often okay, but
+falling multiple versions behind may mean missing bug fixes or new features.
+
+Warning: Self-hosted runners that are not updated within 30 days of a new release
+will stop receiving queued jobs from GitHub Actions. Critical security updates
+will also block job queuing until applied.
+
+Note: Actions Runner follows a progressive release policy — the latest version
+may not yet be available/deployed to all enterprises, organizations, 
+or repositories.
+
+Update the min_version field in this tip file when a new runner version ships:
+  Latest as of 2026-02-18: 2.331.0
+"""
+
+[check]
+type = "version_check"
+scope = "all"
+# Capture group 1 extracts the version from lines like:
+#   Current runner version: '2.323.0'
+pattern = "Current runner version: '(\\d+\\.\\d+\\.\\d+)'"
+# Update this value when a new runner release ships on github.com.
+# See: https://github.com/actions/runner/releases
+min_version = "2.331.0"

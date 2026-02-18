@@ -390,8 +390,8 @@ button:hover {
 /* ── Tips banner ─────────────────────────────────────────── */
 .tips-banner {
     margin-bottom: 1rem;
-    background: #fff8e1;
-    border: 1px solid #f9d77e;
+    background: #f0f4ff;
+    border: 1px solid #b0c4fb;
     border-radius: var(--radius);
     overflow: hidden;
 }
@@ -404,7 +404,7 @@ button:hover {
     padding: 0.625rem 1rem;
     font-size: 0.875rem;
     font-weight: 600;
-    color: #7a5900;
+    color: #2c4aa8;
     background: transparent;
     border: none;
     cursor: pointer;
@@ -423,11 +423,11 @@ button:hover {
 .tips-chevron {
     margin-left: auto;
     font-size: 0.75rem;
-    color: #9a6700;
+    color: #3d5ede;
 }
 
 .tips-list {
-    border-top: 1px solid #f9d77e;
+    border-top: 1px solid #b0c4fb;
     padding: 0.5rem 1rem;
     display: flex;
     flex-direction: column;
@@ -491,7 +491,7 @@ button:hover {
     margin: 0.125rem 0 0 1.6rem;
     font-size: 0.8125rem;
     font-weight: 500;
-    color: #7a5900;
+    color: #2c4aa8;
 }
 
 .tip-item-flash {
@@ -809,20 +809,20 @@ button:hover {
 }
 
 [data-theme="dark"] .tips-banner {
-    background: #2d2000;
-    border-color: #5a4300;
+    background: #0d1a3a;
+    border-color: #2a3f7a;
 }
 
 [data-theme="dark"] .tips-banner-toggle {
-    color: #d29922;
+    color: #7ca4f4;
 }
 
 [data-theme="dark"] .tips-chevron {
-    color: #d29922;
+    color: #7ca4f4;
 }
 
 [data-theme="dark"] .tips-list {
-    border-top-color: #5a4300;
+    border-top-color: #2a3f7a;
 }
 
 [data-theme="dark"] .tip-item {
@@ -830,7 +830,7 @@ button:hover {
 }
 
 [data-theme="dark"] .tip-detail {
-    color: #d29922;
+    color: #7ca4f4;
 }
 
 /* ── Inline code in hints ────────────────────────────────── */

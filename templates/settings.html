@@ -62,6 +62,7 @@
                     <option value="step_duration">Step Duration — flag when a specific step exceeds threshold</option>
                     <option value="time_delta">Time Delta — flag when elapsed-from-start exceeds threshold</option>
                     <option value="time_gap">Time Gap — flag when a consecutive line gap exceeds threshold</option>
+                    <option value="version_check">Version Check — flag when a version is outside min/max bounds</option>
                 </select>
             </div>
 
@@ -168,6 +169,23 @@
                     <textarea id="check-patterns-missing-any" name="patterns_missing_any" rows="4" placeholder="Finishing:\nUpload complete"></textarea>
                 </div>
             </div>
+
+            <div class="check-fields" id="fields-version_check" style="display:none">
+                <div class="form-group">
+                    <label for="check-version-pattern">Regex Pattern <span class="hint">(must contain one capture group for the version)</span></label>
+                    <input type="text" id="check-version-pattern" name="pattern_version" placeholder="e.g. Current runner version: '(\d+\.\d+\.\d+)'">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="check-min-version">Min Version <span class="hint">(optional — MAJOR.MINOR.PATCH)</span></label>
+                        <input type="text" id="check-min-version" name="min_version" placeholder="e.g. 2.319.1">
+                    </div>
+                    <div class="form-group">
+                        <label for="check-max-version">Max Version <span class="hint">(optional — MAJOR.MINOR.PATCH)</span></label>
+                        <input type="text" id="check-max-version" name="max_version" placeholder="e.g. 3.0.0">
+                    </div>
+                </div>
+            </div>
         </fieldset>
 
         <div class="form-actions">
@@ -203,7 +221,7 @@
                         <span class="tip-enabled-label">Enabled:</span>
                         <input type="checkbox" class="tip-enabled-checkbox" disabled {% if tip.enabled %}checked{% endif %}>
                     </span>
-                    <button type="button" class="btn-sm btn-secondary" onclick="editTip(this)" data-id="{{ tip.id }}" data-source-id="{{ tip.source_id }}" data-name="{{ tip.name }}" data-emoji="{{ tip.emoji }}" data-docs="{% match tip.docs %}{% when Some with (d) %}{{ d }}{% when None %}{% endmatch %}" data-description="{% match tip.description %}{% when Some with (d) %}{{ d }}{% when None %}{% endmatch %}" data-status="{% if tip.enabled %}active{% else %}inactive{% endif %}" data-check-type="{{ tip.check_type }}" data-scope="{% match tip.scope %}{% when Some with (s) %}{{ s }}{% when None %}all{% endmatch %}" data-applies-to="{% match tip.applies_to %}{% when Some with (a) %}{{ a }}{% when None %}all{% endmatch %}" data-pattern="{% match tip.pattern %}{% when Some with (p) %}{{ p }}{% when None %}{% endmatch %}" data-patterns="{% match tip.patterns %}{% when Some with (p) %}{{ p }}{% when None %}{% endmatch %}" data-step="{% match tip.step %}{% when Some with (s) %}{{ s }}{% when None %}{% endmatch %}" data-threshold-secs="{% match tip.threshold_secs %}{% when Some with (t) %}{{ t }}{% when None %}{% endmatch %}" data-mark="{% match tip.mark %}{% when Some with (m) %}{{ m }}{% when None %}{% endmatch %}" data-level="{% match tip.level %}{% when Some with (l) %}{{ l }}{% when None %}{% endmatch %}" data-threshold="{% match tip.threshold %}{% when Some with (t) %}{{ t }}{% when None %}{% endmatch %}">Edit</button>
+                    <button type="button" class="btn-sm btn-secondary" onclick="editTip(this)" data-id="{{ tip.id }}" data-source-id="{{ tip.source_id }}" data-name="{{ tip.name }}" data-emoji="{{ tip.emoji }}" data-docs="{% match tip.docs %}{% when Some with (d) %}{{ d }}{% when None %}{% endmatch %}" data-description="{% match tip.description %}{% when Some with (d) %}{{ d }}{% when None %}{% endmatch %}" data-status="{% if tip.enabled %}active{% else %}inactive{% endif %}" data-check-type="{{ tip.check_type }}" data-scope="{% match tip.scope %}{% when Some with (s) %}{{ s }}{% when None %}all{% endmatch %}" data-applies-to="{% match tip.applies_to %}{% when Some with (a) %}{{ a }}{% when None %}all{% endmatch %}" data-pattern="{% match tip.pattern %}{% when Some with (p) %}{{ p }}{% when None %}{% endmatch %}" data-patterns="{% match tip.patterns %}{% when Some with (p) %}{{ p }}{% when None %}{% endmatch %}" data-step="{% match tip.step %}{% when Some with (s) %}{{ s }}{% when None %}{% endmatch %}" data-threshold-secs="{% match tip.threshold_secs %}{% when Some with (t) %}{{ t }}{% when None %}{% endmatch %}" data-mark="{% match tip.mark %}{% when Some with (m) %}{{ m }}{% when None %}{% endmatch %}" data-level="{% match tip.level %}{% when Some with (l) %}{{ l }}{% when None %}{% endmatch %}" data-threshold="{% match tip.threshold %}{% when Some with (t) %}{{ t }}{% when None %}{% endmatch %}" data-min-version="{% match tip.min_version %}{% when Some with (v) %}{{ v }}{% when None %}{% endmatch %}" data-max-version="{% match tip.max_version %}{% when Some with (v) %}{{ v }}{% when None %}{% endmatch %}">Edit</button>
                     <form action="/settings/tips/delete" method="post" class="inline-form" onsubmit="return confirm('Delete tip \'{{ tip.id }}\'?');">
                         <input type="hidden" name="source_id" value="{{ tip.source_id }}">
                         <button type="submit" class="btn-sm btn-danger">Delete</button>
@@ -273,6 +291,10 @@ function editTip(btn) {
         document.getElementById('check-pattern-missing').value = btn.dataset.pattern || '';
     } else if (ct === 'missing_any_pattern') {
         document.getElementById('check-patterns-missing-any').value = btn.dataset.patterns || '';
+    } else if (ct === 'version_check') {
+        document.getElementById('check-version-pattern').value = btn.dataset.pattern || '';
+        document.getElementById('check-min-version').value = btn.dataset.minVersion || '';
+        document.getElementById('check-max-version').value = btn.dataset.maxVersion || '';
     }
 
     document.getElementById('tip-form').scrollIntoView({ behavior: 'smooth' });

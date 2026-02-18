@@ -56,6 +56,10 @@ struct CheckToml {
     level: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     threshold: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    min_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    max_version: Option<String>,
 }
 
 // ── Loaded tip ───────────────────────────────────────────────────────────────
@@ -147,6 +151,14 @@ pub enum Check {
         step: String,
         threshold_ms: i64,
         mark: TimeDeltaMark,
+    },
+    /// Flag when a version extracted from the log is outside the specified bounds.
+    /// `regex` must contain a capture group that yields the version string.
+    /// At least one of `min_version` or `max_version` must be set.
+    VersionCheck {
+        regex: Regex,
+        min_version: Option<[u64; 3]>,
+        max_version: Option<[u64; 3]>,
     },
 }
 
@@ -336,6 +348,35 @@ fn load_tip_file(path: &Path) -> anyhow::Result<Tip> {
                     regexes: regexes?,
                 }
             }
+            "version_check" => {
+                let pat = raw
+                    .check
+                    .pattern
+                    .as_deref()
+                    .ok_or_else(|| anyhow::anyhow!("version_check requires 'pattern'"))?;
+                let regex = Regex::new(pat)?;
+                if regex.captures_len() < 2 {
+                    anyhow::bail!("version_check 'pattern' must contain at least one capture group");
+                }
+                let min_version = raw
+                    .check
+                    .min_version
+                    .as_deref()
+                    .map(parse_version_triple)
+                    .transpose()
+                    .map_err(|e| anyhow::anyhow!("Invalid min_version: {e}"))?;
+                let max_version = raw
+                    .check
+                    .max_version
+                    .as_deref()
+                    .map(parse_version_triple)
+                    .transpose()
+                    .map_err(|e| anyhow::anyhow!("Invalid max_version: {e}"))?;
+                if min_version.is_none() && max_version.is_none() {
+                    anyhow::bail!("version_check requires at least one of 'min_version' or 'max_version'");
+                }
+                Check::VersionCheck { regex, min_version, max_version }
+            }
             other => anyhow::bail!("Unknown check type: {other}"),
         };
 
@@ -376,6 +417,8 @@ pub struct TipSummary {
     pub mark: Option<String>,
     pub level: Option<String>,
     pub threshold: Option<usize>,
+    pub min_version: Option<String>,
+    pub max_version: Option<String>,
     /// Date the tip was first created (YYYY-MM-DD).
     pub created: Option<String>,
     /// Date the tip was last updated (YYYY-MM-DD).
@@ -424,6 +467,8 @@ pub fn load_tip_summaries(dir: &Path) -> Vec<TipSummary> {
                     mark: None,
                     level: None,
                     threshold: None,
+                    min_version: None,
+                    max_version: None,
                     created: None,
                     updated: None,
                     error: Some(format!("Read error: {e}")),
@@ -452,6 +497,8 @@ pub fn load_tip_summaries(dir: &Path) -> Vec<TipSummary> {
                     mark: raw.check.mark,
                     level: raw.check.level,
                     threshold: raw.check.threshold,
+                    min_version: raw.check.min_version,
+                    max_version: raw.check.max_version,
                     created: raw.created,
                     updated: raw.updated,
                     error: None,
@@ -476,6 +523,8 @@ pub fn load_tip_summaries(dir: &Path) -> Vec<TipSummary> {
                     mark: None,
                     level: None,
                     threshold: None,
+                    min_version: None,
+                    max_version: None,
                     created: None,
                     updated: None,
                     error: Some(format!("Parse error: {e}")),
@@ -508,6 +557,8 @@ pub struct SaveTipInput<'a> {
     pub mark: Option<&'a str>,
     pub level: Option<&'a str>,
     pub threshold: Option<usize>,
+    pub min_version: Option<&'a str>,
+    pub max_version: Option<&'a str>,
 }
 
 /// Save a tip to a TOML file. The filename is derived from the tip ID.
@@ -591,6 +642,8 @@ pub fn save_tip(input: SaveTipInput<'_>) -> anyhow::Result<()> {
             mark: input.mark.filter(|s| !s.is_empty()).map(|s| s.to_string()),
             level: input.level.filter(|s| !s.is_empty()).map(|s| s.to_string()),
             threshold: input.threshold,
+            min_version: input.min_version.filter(|s| !s.is_empty()).map(|s| s.to_string()),
+            max_version: input.max_version.filter(|s| !s.is_empty()).map(|s| s.to_string()),
         },
     };
 
@@ -662,6 +715,22 @@ fn parse_tip_applies_to(applies_to: Option<&str>) -> anyhow::Result<TipAppliesTo
     }
 }
 
+/// Parse a `"MAJOR.MINOR.PATCH"` version string into a `[u64; 3]` tuple.
+fn parse_version_triple(s: &str) -> anyhow::Result<[u64; 3]> {
+    let parts: Vec<&str> = s.trim().split('.').collect();
+    if parts.len() != 3 {
+        anyhow::bail!("expected MAJOR.MINOR.PATCH, got {s:?}");
+    }
+    let major = parts[0].parse::<u64>().map_err(|_| anyhow::anyhow!("invalid major in {s:?}"))?;
+    let minor = parts[1].parse::<u64>().map_err(|_| anyhow::anyhow!("invalid minor in {s:?}"))?;
+    let patch = parts[2].parse::<u64>().map_err(|_| anyhow::anyhow!("invalid patch in {s:?}"))?;
+    Ok([major, minor, patch])
+}
+
+fn format_version(v: [u64; 3]) -> String {
+    format!("{}.{}.{}", v[0], v[1], v[2])
+}
+
 fn parse_tip_schema_version(raw_version: Option<u32>) -> anyhow::Result<u32> {
     let version = raw_version.unwrap_or(CURRENT_TIP_SCHEMA_VERSION);
     if version != CURRENT_TIP_SCHEMA_VERSION {
@@ -709,6 +778,11 @@ fn evaluate_tip(tip: &Tip, entries: &[LogEntry]) -> TipResult {
             threshold_ms,
             mark,
         } => eval_step_duration(tip, entries, step, *threshold_ms, *mark),
+        Check::VersionCheck {
+            regex,
+            min_version,
+            max_version,
+        } => eval_version_check(tip, entries, regex, *min_version, *max_version),
     }
 }
 
@@ -1056,6 +1130,61 @@ fn format_duration_detail(ms: i64) -> String {
         format!("Elapsed: {mins}m {secs}s")
     } else {
         format!("Elapsed: {secs}s")
+    }
+}
+
+fn eval_version_check(
+    tip: &Tip,
+    entries: &[LogEntry],
+    regex: &Regex,
+    min_version: Option<[u64; 3]>,
+    max_version: Option<[u64; 3]>,
+) -> TipResult {
+    // Find the first log line that contains a version capture, then check bounds.
+    for entry in entries {
+        let Some(caps) = regex.captures(&entry.message) else {
+            continue;
+        };
+        let Some(version_str) = caps.get(1).map(|m| m.as_str()) else {
+            continue;
+        };
+        let Ok(found) = parse_version_triple(version_str) else {
+            continue;
+        };
+
+        let below_min = min_version.is_some_and(|min| found < min);
+        let above_max = max_version.is_some_and(|max| found > max);
+        let triggered = below_min || above_max;
+
+        let detail = if triggered {
+            let found_str = format_version(found);
+            if below_min {
+                let min_str = format_version(min_version.unwrap());
+                format!("Runner version {found_str} is below minimum {min_str}")
+            } else {
+                let max_str = format_version(max_version.unwrap());
+                format!("Runner version {found_str} is above maximum {max_str}")
+            }
+        } else {
+            String::new()
+        };
+
+        let marked_lines = if triggered { vec![entry.line_number] } else { Vec::new() };
+
+        return TipResult {
+            tip: tip.clone(),
+            triggered,
+            detail,
+            marked_lines,
+        };
+    }
+
+    // No matching line found — tip does not trigger.
+    TipResult {
+        tip: tip.clone(),
+        triggered: false,
+        detail: String::new(),
+        marked_lines: Vec::new(),
     }
 }
 

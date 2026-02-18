@@ -74,6 +74,12 @@ pub struct TipForm {
     pub level: String,
     #[serde(default)]
     pub threshold: String,
+    #[serde(default)]
+    pub min_version: String,
+    #[serde(default)]
+    pub max_version: String,
+    #[serde(default)]
+    pub pattern_version: String,
 }
 
 fn parse_optional_number<T>(field_name: &str, raw: &str) -> anyhow::Result<Option<T>>
@@ -164,6 +170,8 @@ pub async fn save_tip(
         Some(form.pattern_missing.as_str())
     } else if form.check_type == "pattern_match" {
         Some(form.pattern.as_str())
+    } else if form.check_type == "version_check" {
+        Some(form.pattern_version.as_str())
     } else {
         None
     };
@@ -213,6 +221,8 @@ pub async fn save_tip(
         mark: Some(selected_mark),
         level: Some(form.level.as_str()),
         threshold,
+        min_version: Some(form.min_version.as_str()),
+        max_version: Some(form.max_version.as_str()),
     });
 
     match result {
