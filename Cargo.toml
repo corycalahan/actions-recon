@@ -1,0 +1,45 @@
+[package]
+name = "actions-recon"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# Web framework
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["fs"] }
+
+# Templates
+askama = "0.13"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Config
+dotenvy = "0.15"
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# ZIP extraction
+zip = "2"
+
+# Multipart uploads
+axum-extra = { version = "0.10", features = ["multipart"] }
+
+# URL encoding
+urlencoding = "2"
+
+# Tips engine
+toml = "0.8"
+serde = { version = "1", features = ["derive"] }
+regex = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+tempfile = "3"

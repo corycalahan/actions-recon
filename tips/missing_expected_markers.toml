@@ -1,0 +1,23 @@
+schema_version = 1
+id    = "missing-expected-markers"
+name  = "Missing Expected Markers"
+emoji = "🧪"
+docs  = "https://docs.github.com/en/actions/monitoring-and-troubleshooting-workflows/troubleshooting-workflows"
+created = "2026-02-17"
+updated = "2026-02-17"
+
+description = """
+Triggers when one or more expected lifecycle markers are absent.
+This can suggest incomplete job execution, missing upload phases, or interrupted teardown.
+Searches for 'Finishing:' and 'Completed runner diagnostic log upload'.
+Debug logs must be enabled for 'Finishing:' to appear in the log.
+"""
+
+[check]
+type = "missing_any_pattern"
+scope = "workflow"
+applies_to = "debug_logs_enabled"
+patterns = [
+  "Finishing:",
+  "Completed runner diagnostic log upload"
+]

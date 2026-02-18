@@ -1,0 +1,19 @@
+schema_version = 1
+id    = "large-time-gap"
+name  = "Large Time Gap Between Log Lines"
+emoji = "⏳"
+docs  = "https://docs.github.com/en/actions/managing-workflow-runs-and-deployments/managing-deployments/reviewing-deployments"
+created = "2026-02-17"
+updated = "2026-02-17"
+
+description = """
+A large time span was detected between two consecutive timestamped log lines.
+This can indicate manual approval waits, queued runner delays, stalled external dependencies,
+or long-running deployment/verification phases.
+"""
+
+[check]
+type = "time_gap"
+scope = "workflow"
+threshold_secs = 900
+mark = "first_last"

@@ -1,0 +1,17 @@
+schema_version = 1
+id    = "disk-space-issue"
+name  = "Disk Space Issue"
+emoji = "💾"
+docs  = "https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/usage-limits-billing-and-administration"
+created = "2026-02-17"
+updated = "2026-02-17"
+
+description = """
+A log message mentions running out of disk space. GitHub-hosted runners
+have limited storage. Consider using actions/cache, cleaning up artifacts
+between steps, or using a larger runner/self-hosted runner.
+"""
+
+[check]
+type = "pattern_match"
+pattern = "(?i)no space left on device|disk quota exceeded|ENOSPC"

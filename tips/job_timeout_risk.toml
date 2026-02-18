@@ -1,0 +1,20 @@
+schema_version = 1
+id    = "job-timeout-risk"
+name  = "Job Timeout Risk"
+emoji = "⏱️"
+docs  = "https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/usage-limits-billing-and-administration"
+created = "2026-02-17"
+updated = "2026-02-17"
+
+description = """
+The elapsed time from the first timestamped log entry reached or exceeded the threshold.
+The marker is placed on the last log line sampled at the point the threshold is crossed.
+GitHub-hosted runner jobs have a maximum execution time of 6 hours (21,600 seconds).
+Self-hosted runners default to unlimited but can be capped with `timeout-minutes`.
+Check whether the job is hanging, has excessive retries, or needs a timeout limit.
+"""
+
+[check]
+type = "time_delta"
+threshold_secs = 21600
+mark = "last"

@@ -1,0 +1,25 @@
+schema_version = 1
+id = "any-failure-signals"
+name = "Any Failure Signals"
+emoji = "🧩"
+docs = "https://docs.github.com/en/actions/monitoring-and-troubleshooting-workflows/troubleshooting-workflows"
+description = """
+Flags lines containing common failure signals: non-zero exit codes, fatal errors,
+or permission denied messages. Useful as a broad catch-all when the specific
+failure type is not yet known.
+"""
+created = "2026-02-17"
+updated = "2026-02-18"
+enabled = true
+
+[check]
+type = "contains_any_patterns"
+scope = "workflow"
+applies_to = "all"
+patterns = [
+    "(?i)process completed with exit code [^0]",
+    "(?i)fatal:",
+    "(?i)permission denied",
+]
+mark = "last"
+level = "error"

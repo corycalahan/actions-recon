@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+
+{% block title %}Settings — actions-recon{% endblock %}
+
+{% block content %}
+<section>
+    <h1>⚙️ Settings</h1>
+    <p class="hint">Manage troubleshooting tips that are evaluated against log files.</p>
+</section>
+
+{% match flash_error %}{% when Some with (msg) %}
+<div class="flash flash-error">{{ msg }}</div>
+{% when None %}{% endmatch %}
+
+{% match flash %}{% when Some with (msg) %}
+<div class="flash flash-success">{{ msg }}</div>
+{% when None %}{% endmatch %}
+
+<section>
+    <h2>Add / Edit Tip</h2>
+    <form action="/settings/tips" method="post" class="tip-form" id="tip-form">
+        <input type="hidden" id="tip-source-id" name="source_id" value="">
+        <div class="form-group form-group-checkbox">
+            <label for="tip-enabled" class="checkbox-label">
+                <input type="checkbox" id="tip-enabled" name="enabled" value="on" checked>
+                Enabled
+            </label>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label for="tip-id">ID <span class="hint">(alphanumeric, dashes, underscores)</span></label>
+                <input type="text" id="tip-id" name="id" required pattern="[a-zA-Z0-9_-]+" placeholder="e.g. my-custom-tip">
+            </div>
+            <div class="form-group form-group-sm">
+                <label for="tip-emoji">Emoji</label>
+                <input type="text" id="tip-emoji" name="emoji" required maxlength="4" placeholder="🔍">
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="tip-name">Name</label>
+            <input type="text" id="tip-name" name="name" required placeholder="e.g. Known Customization Issue">
+        </div>
+        <div class="form-group">
+            <label for="tip-docs">Docs URL <span class="hint">(optional — link to GitHub Docs)</span></label>
+            <input type="url" id="tip-docs" name="docs" placeholder="https://docs.github.com/...">
+        </div>
+        <div class="form-group">
+            <label for="tip-description">Description <span class="hint">(optional)</span></label>
+            <textarea id="tip-description" name="description" rows="3" placeholder="What this tip detects and how to fix it..."></textarea>
+        </div>
+
+        <fieldset class="check-fieldset">
+            <legend>Check Configuration</legend>
+            <div class="form-group">
+                <label for="check-type">Check Type</label>
+                <select id="check-type" name="check_type" required>
+                    <option value="pattern_match">Pattern Match — flag lines matching a regex</option>
+                    <option value="contains_any_patterns">Contains Any Patterns — flag lines matching any regex in a list</option>
+                    <option value="missing_pattern">Missing Pattern — flag when a pattern is absent</option>
+                    <option value="missing_any_pattern">Missing Any Pattern — flag when any expected pattern is absent</option>
+                    <option value="level_count">Level Count — flag when a log level count exceeds threshold</option>
+                    <option value="step_duration">Step Duration — flag when a specific step exceeds threshold</option>
+                    <option value="time_delta">Time Delta — flag when elapsed-from-start exceeds threshold</option>
+                    <option value="time_gap">Time Gap — flag when a consecutive line gap exceeds threshold</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="check-scope">Scope</label>
+                <select id="check-scope" name="scope">
+                    <option value="all">All logs</option>
+                    <option value="workflow">Workflow logs only</option>
+                    <option value="runner">Runner diagnostic logs only</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="check-applies-to">Applies to:</label>
+                <select id="check-applies-to" name="applies_to">
+                    <option value="all">All logs</option>
+                    <option value="standard_logs">Standard logs</option>
+                    <option value="debug_logs_enabled">Debug logs enabled</option>
+                    <option value="diagnostic_logs_enabled">Diagnostic logs enabled</option>
+                </select>
+            </div>
+
+            <div class="check-fields" id="fields-pattern_match">
+                <div class="form-group">
+                    <label for="check-pattern">Regex Pattern</label>
+                    <input type="text" id="check-pattern" name="pattern" placeholder="e.g. ##\\[error\\]">
+                </div>
+            </div>
+
+            <div class="check-fields" id="fields-contains_any_patterns" style="display:none">
+                <div class="form-group">
+                    <label for="check-patterns-any">Regex Patterns <span class="hint">(one per line)</span></label>
+                    <textarea id="check-patterns-any" name="patterns_any" rows="4" placeholder="(?i)error\nProcess completed with exit code [^0]"></textarea>
+                </div>
+            </div>
+
+            <div class="check-fields" id="fields-time_delta" style="display:none">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="check-threshold-secs">Threshold (seconds)</label>
+                        <input type="number" id="check-threshold-secs" name="threshold_secs" min="1" placeholder="21600">
+                    </div>
+                    <div class="form-group">
+                        <label for="check-mark">Mark Lines</label>
+                        <select id="check-mark" name="mark">
+                            <option value="last">Last timestamped line</option>
+                            <option value="first_last">First &amp; last timestamped lines</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="check-fields" id="fields-level_count" style="display:none">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="check-level">Log Level</label>
+                        <select id="check-level" name="level">
+                            <option value="error">Error</option>
+                            <option value="warning">Warning</option>
+                            <option value="debug">Debug</option>
+                            <option value="info">Info</option>
+                            <option value="notice">Notice</option>
+                            <option value="command">Command</option>
+                            <option value="group">Group</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="check-threshold">Threshold (count)</label>
+                        <input type="number" id="check-threshold" name="threshold" min="0" placeholder="10">
+                    </div>
+                </div>
+            </div>
+
+            <div class="check-fields" id="fields-step_duration" style="display:none">
+                <div class="form-group">
+                    <label for="check-step-name">Step Name</label>
+                    <input type="text" id="check-step-name" name="step_name" placeholder="e.g. Deploy to Production">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="check-threshold-secs-step">Threshold (seconds)</label>
+                        <input type="number" id="check-threshold-secs-step" name="threshold_secs_step" min="1" placeholder="1800">
+                    </div>
+                    <div class="form-group">
+                        <label for="check-mark-step">Mark Lines</label>
+                        <select id="check-mark-step" name="mark_step">
+                            <option value="last">Finishing line</option>
+                            <option value="first_last">Starting &amp; finishing lines</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="check-fields" id="fields-missing_pattern" style="display:none">
+                <div class="form-group">
+                    <label for="check-pattern-missing">Regex Pattern (expected but missing)</label>
+                    <input type="text" id="check-pattern-missing" name="pattern_missing" placeholder="e.g. Finishing:">
+                </div>
+            </div>
+
+            <div class="check-fields" id="fields-missing_any_pattern" style="display:none">
+                <div class="form-group">
+                    <label for="check-patterns-missing-any">Regex Patterns <span class="hint">(one per line; tip triggers if any are missing)</span></label>
+                    <textarea id="check-patterns-missing-any" name="patterns_missing_any" rows="4" placeholder="Finishing:\nUpload complete"></textarea>
+                </div>
+            </div>
+        </fieldset>
+
+        <div class="form-actions">
+            <button type="submit">Save Tip</button>
+            <button type="reset" class="btn-secondary">Clear Form</button>
+        </div>
+    </form>
+</section>
+
+<section>
+    <h2>Existing Tips ({{ tips.len() }})</h2>
+    {% if tips.is_empty() %}
+    <p class="hint">No tips found. Create one above!</p>
+    {% else %}
+    <div class="tips-admin-list">
+        {% for tip in tips %}
+        <div class="tip-admin-card{% match tip.error %}{% when Some with (_) %} tip-card-error{% when None %}{% endmatch %}">
+            <div class="tip-admin-header">
+                <span class="tip-admin-emoji">{{ tip.emoji }}</span>
+                <div class="tip-admin-info">
+                    <div class="tip-admin-title">
+                        <strong>{{ tip.name }}</strong>
+                        <code>{{ tip.id }}</code>
+                    </div>
+                    <div class="tip-admin-badges">
+                        <span class="tip-badge-group">Check Type: <span class="badge badge-check-type">{{ tip.check_type }}</span></span>
+                        <span class="tip-badge-group">Scope: <span class="badge badge-scope">{% match tip.scope %}{% when Some with (s) %}{% if s == "all" %}All logs{% else if s == "workflow" %}Workflow logs only{% else if s == "runner" %}Runner diagnostic logs only{% else %}{{ s }}{% endif %}{% when None %}All logs{% endmatch %}</span></span>
+                        <span class="tip-badge-group">Applies to: <span class="badge badge-applies-to">{% match tip.applies_to %}{% when Some with (a) %}{% if a == "all" %}All logs{% else if a == "standard_logs" %}Standard logs{% else if a == "debug_logs_enabled" %}Debug logs enabled{% else if a == "diagnostic_logs_enabled" %}Diagnostic logs enabled{% else %}{{ a }}{% endif %}{% when None %}All logs{% endmatch %}</span></span>
+                    </div>
+                </div>
+                <div class="tip-admin-actions">
+                    <span class="tip-enabled-indicator">
+                        <span class="tip-enabled-label">Enabled:</span>
+                        <input type="checkbox" class="tip-enabled-checkbox" disabled {% if tip.enabled %}checked{% endif %}>
+                    </span>
+                    <button type="button" class="btn-sm btn-secondary" onclick="editTip(this)" data-id="{{ tip.id }}" data-source-id="{{ tip.source_id }}" data-name="{{ tip.name }}" data-emoji="{{ tip.emoji }}" data-docs="{% match tip.docs %}{% when Some with (d) %}{{ d }}{% when None %}{% endmatch %}" data-description="{% match tip.description %}{% when Some with (d) %}{{ d }}{% when None %}{% endmatch %}" data-status="{% if tip.enabled %}active{% else %}inactive{% endif %}" data-check-type="{{ tip.check_type }}" data-scope="{% match tip.scope %}{% when Some with (s) %}{{ s }}{% when None %}all{% endmatch %}" data-applies-to="{% match tip.applies_to %}{% when Some with (a) %}{{ a }}{% when None %}all{% endmatch %}" data-pattern="{% match tip.pattern %}{% when Some with (p) %}{{ p }}{% when None %}{% endmatch %}" data-patterns="{% match tip.patterns %}{% when Some with (p) %}{{ p }}{% when None %}{% endmatch %}" data-step="{% match tip.step %}{% when Some with (s) %}{{ s }}{% when None %}{% endmatch %}" data-threshold-secs="{% match tip.threshold_secs %}{% when Some with (t) %}{{ t }}{% when None %}{% endmatch %}" data-mark="{% match tip.mark %}{% when Some with (m) %}{{ m }}{% when None %}{% endmatch %}" data-level="{% match tip.level %}{% when Some with (l) %}{{ l }}{% when None %}{% endmatch %}" data-threshold="{% match tip.threshold %}{% when Some with (t) %}{{ t }}{% when None %}{% endmatch %}">Edit</button>
+                    <form action="/settings/tips/delete" method="post" class="inline-form" onsubmit="return confirm('Delete tip \'{{ tip.id }}\'?');">
+                        <input type="hidden" name="source_id" value="{{ tip.source_id }}">
+                        <button type="submit" class="btn-sm btn-danger">Delete</button>
+                    </form>
+                </div>
+            </div>
+            {% match tip.description %}{% when Some with (desc) %}<p class="tip-admin-desc">{{ desc }}</p>{% when None %}{% endmatch %}
+            <div class="tip-admin-dates">
+                {% match tip.created %}{% when Some with (d) %}<span class="tip-date">Created: {{ d }}</span>{% when None %}{% endmatch %}
+                {% match tip.updated %}{% when Some with (d) %}<span class="tip-date">Updated: {{ d }}</span>{% when None %}{% endmatch %}
+            </div>
+            {% match tip.error %}{% when Some with (err) %}<p class="tip-admin-error">⚠️ {{ err }}</p>{% when None %}{% endmatch %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</section>
+
+<script>
+// Show/hide check-type-specific fields
+var checkTypeSelect = document.getElementById('check-type');
+function updateCheckFields() {
+    document.querySelectorAll('.check-fields').forEach(function(el) {
+        el.style.display = 'none';
+    });
+    var selected = checkTypeSelect.value;
+    if (selected === 'time_gap') {
+        selected = 'time_delta';
+    }
+    var fields = document.getElementById('fields-' + selected);
+    if (fields) fields.style.display = '';
+}
+checkTypeSelect.addEventListener('change', updateCheckFields);
+updateCheckFields();
+
+// Populate form for editing
+function editTip(btn) {
+    document.getElementById('tip-id').value = btn.dataset.id;
+    document.getElementById('tip-source-id').value = btn.dataset.sourceId || '';
+    document.getElementById('tip-name').value = btn.dataset.name;
+    document.getElementById('tip-emoji').value = btn.dataset.emoji;
+    document.getElementById('tip-docs').value = btn.dataset.docs || '';
+    document.getElementById('tip-description').value = btn.dataset.description || '';
+
+    var ct = btn.dataset.checkType;
+    document.getElementById('check-scope').value = btn.dataset.scope || 'all';
+    document.getElementById('check-applies-to').value = btn.dataset.appliesTo || 'all';
+    document.getElementById('tip-enabled').checked = (btn.dataset.status !== 'inactive');
+    checkTypeSelect.value = ct;
+    updateCheckFields();
+
+    if (ct === 'pattern_match') {
+        document.getElementById('check-pattern').value = btn.dataset.pattern || '';
+    } else if (ct === 'contains_any_patterns') {
+        document.getElementById('check-patterns-any').value = btn.dataset.patterns || '';
+    } else if (ct === 'time_delta' || ct === 'time_gap') {
+        document.getElementById('check-threshold-secs').value = btn.dataset.thresholdSecs || '';
+        document.getElementById('check-mark').value = btn.dataset.mark || 'last';
+    } else if (ct === 'step_duration') {
+        document.getElementById('check-step-name').value = btn.dataset.step || '';
+        document.getElementById('check-threshold-secs-step').value = btn.dataset.thresholdSecs || '';
+        document.getElementById('check-mark-step').value = btn.dataset.mark || 'last';
+    } else if (ct === 'level_count') {
+        document.getElementById('check-level').value = btn.dataset.level || 'error';
+        document.getElementById('check-threshold').value = btn.dataset.threshold || '';
+    } else if (ct === 'missing_pattern') {
+        document.getElementById('check-pattern-missing').value = btn.dataset.pattern || '';
+    } else if (ct === 'missing_any_pattern') {
+        document.getElementById('check-patterns-missing-any').value = btn.dataset.patterns || '';
+    }
+
+    document.getElementById('tip-form').scrollIntoView({ behavior: 'smooth' });
+}
+</script>
+{% endblock %}

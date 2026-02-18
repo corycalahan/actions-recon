@@ -1,0 +1,19 @@
+schema_version = 1
+id    = "slow-deploy-step"
+name  = "Slow Deploy Step"
+emoji = "🚦"
+docs  = "https://docs.github.com/en/actions/deployment/about-deployments/deploying-with-github-actions"
+created = "2026-02-17"
+updated = "2026-02-17"
+
+description = """
+Flags deployments that exceed the expected duration for a specific step.
+Helps identify unusually slow release phases or blocked rollout workflows.
+"""
+
+[check]
+type = "step_duration"
+scope = "workflow"
+step = "Deploy"
+threshold_secs = 1800
+mark = "first_last"

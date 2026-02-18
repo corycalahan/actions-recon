@@ -1,0 +1,25 @@
+schema_version = 1
+id    = "proxy-detected"
+name  = "Proxy Detected"
+emoji = "🎭"
+docs  = "https://docs.github.com/en/actions/how-tos/manage-runners/use-proxy-servers"
+created = "2026-02-17"
+updated = "2026-02-17"
+
+description = """
+Flags known GitHub runner messages that indicate proxy configuration is active.
+Avoids triggering on informational lines such as 'No proxy settings were found...'.
+"""
+
+[check]
+type = "contains_any_patterns"
+scope = "all"
+# Source of these runner log phrases:
+# https://github.com/actions/runner/blob/main/src/Runner.Common/HostContext.cs
+# (proxy setup log lines like "Configuring anonymous proxy ...")
+patterns = [
+  "(?i)Configuring anonymous proxy .+ for all HTTP requests\\.",
+  "(?i)Configuring authenticated proxy .+ for all HTTP requests\\.",
+  "(?i)Configuring anonymous proxy .+ for all HTTPS requests\\.",
+  "(?i)Configuring authenticated proxy .+ for all HTTPS requests\\."
+]

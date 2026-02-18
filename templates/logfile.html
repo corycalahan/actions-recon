@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+
+{% block title %}{{ logfile_name }} — {{ analysis_id }} — actions-recon{% endblock %}
+
+{% block content %}
+<section class="logfile-header">
+    <h1>{{ logfile_name }}</h1>
+    <p class="hint">Analysis: <a href="/analysis/{{ analysis_id }}">{{ analysis_id }}.zip</a></p>
+    <div class="log-stats">
+        <span class="stat">{{ total_lines }} total lines</span>
+        {% if info_count > 0 %}<span class="stat stat-info">{{ info_count }} info</span>{% endif %}
+        {% if debug_count > 0 %}<span class="stat stat-debug">{{ debug_count }} debug</span>{% endif %}
+        {% if warning_count > 0 %}<span class="stat stat-warning">{{ warning_count }} warnings</span>{% endif %}
+        {% if error_count > 0 %}<span class="stat stat-error">{{ error_count }} errors</span>{% endif %}
+        {% if notice_count > 0 %}<span class="stat stat-notice">{{ notice_count }} notices</span>{% endif %}
+        {% if command_count > 0 %}<span class="stat stat-command">{{ command_count }} commands</span>{% endif %}
+        {% if group_count > 0 %}<span class="stat stat-group">{{ group_count }} groups</span>{% endif %}
+    </div>
+    <div class="log-controls">
+        <label><input type="checkbox" class="toggle-level" data-level="level-info" checked> Info</label>
+        <label><input type="checkbox" class="toggle-level" data-level="level-debug" checked> Debug</label>
+        <label><input type="checkbox" class="toggle-level" data-level="level-warning" checked> Warnings</label>
+        <label><input type="checkbox" class="toggle-level" data-level="level-error" checked> Errors</label>
+        <label><input type="checkbox" class="toggle-level" data-level="level-notice" checked> Notices</label>
+        <label><input type="checkbox" class="toggle-level" data-level="level-command" checked> Commands</label>
+        <label><input type="checkbox" id="toggle-groups" checked> Groups</label>
+    </div>
+</section>
+
+{% if !action_refs.is_empty() %}
+<section class="actions-summary">
+    <h2>Referenced Actions ({{ action_refs.len() }})</h2>
+    <p class="hint">Detected from this logfile. Links assume public GitHub.com repositories; on GitHub Enterprise Server (GHES) or private repositories, links may be inaccessible or the action source may not be available.</p>
+    <div class="actions-summary-table-wrap">
+        <table class="actions-summary-table">
+            <thead>
+                <tr>
+                    <th>Owner/Repo</th>
+                    <th>Link</th>
+                    <th>Path</th>
+                    <th>Version/Ref</th>
+                    <th>First Seen</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for action in action_refs %}
+                <tr>
+                    <td><code>{{ action.owner_repo }}</code></td>
+                    <td><a href="{{ action.github_url }}" target="_blank" rel="noopener" class="action-link-icon" title="Open repository">🔗</a></td>
+                    <td>{{ action.path }}</td>
+                    <td><code>{{ action.reference }}</code></td>
+                    <td><a href="#line-{{ action.first_line }}">L{{ action.first_line }}</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endif %}
+
+{% if !tips.is_empty() %}
+<section class="tips-banner">
+    <button class="tips-banner-toggle" type="button" id="tips-toggle">
+        <span class="tips-banner-icon">💡</span>
+        <span class="tips-banner-title">{{ tips.len() }} tip{% if tips.len() != 1 %}s{% endif %} detected</span>
+        <span class="tips-chevron" id="tips-chevron">▼</span>
+    </button>
+    <div class="tips-actions">
+        <button type="button" id="clear-tip-filter" class="btn-sm btn-secondary">Clear tip filter</button>
+    </div>
+    <div class="tips-list" id="tips-list">
+        {% for tip in tips %}
+        <div class="tip-item" data-tip-id="{{ tip.id }}">
+            <div class="tip-header">
+                <label class="tip-toggle-label">
+                    <input type="checkbox" class="tip-highlight-toggle" data-tip-id="{{ tip.id }}" data-has-marked-lines="{% if tip.has_marked_lines %}true{% else %}false{% endif %}">
+                    <span class="tip-emoji">{{ tip.emoji }}</span>
+                    <strong>{{ tip.name }}</strong>
+                    {% if !tip.has_marked_lines %}<span class="tip-no-lines">(banner only)</span>{% endif %}
+                </label>
+                {% match tip.docs %}{% when Some with (url) %}<a href="{{ url }}" target="_blank" rel="noopener" class="tip-docs-link" title="GitHub Docs">📖</a>{% when None %}{% endmatch %}
+            </div>
+            {% match tip.description %}{% when Some with (desc) %}<p class="tip-description">{{ desc }}</p>{% when None %}{% endmatch %}
+            {% if !tip.detail.is_empty() %}<p class="tip-detail">{{ tip.detail }}</p>{% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+<section class="timeline-section">
+    <table class="timeline-table">
+        <thead>
+            <tr>
+                <th class="col-tips" title="Tips">💡</th>
+                <th class="col-line"><button id="sort-toggle" class="btn-sort" type="button" title="Reverse order"># &#x25B2;</button></th>
+                <th class="col-time">Timestamp</th>
+                <th class="col-level">Level</th>
+                <th class="col-message">Message</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for entry in entries %}
+            <tr id="line-{{ entry.line_number }}" class="log-row {{ entry.level.css_class() }}{% if entry.group_start %} group-start{% endif %}{% if entry.group_end %} group-end{% endif %}" data-line="{{ entry.line_number }}">
+                <td class="col-tips">
+                    {% for tip in tips %}{% if tip.marked_lines.contains(&entry.line_number) %}<button type="button" class="tip-indicator" data-tip-id="{{ tip.id }}" title="Jump to tip: {{ tip.name }}">{{ tip.emoji }}</button>{% endif %}{% endfor %}
+                </td>
+                <td class="col-line">{{ entry.line_number }}</td>
+                <td class="col-time">{% match entry.timestamp %}{% when Some with (ts) %}<span class="ts-text">{{ ts }}</span>{% match entry.epoch_millis %}{% when Some with (epoch) %}<button class="btn-epoch" type="button" title="Copy epoch (ms): {{ epoch }}" data-epoch="{{ epoch }}">epoch</button>{% when None %}{% endmatch %}{% when None %}{% endmatch %}</td>
+                <td class="col-level"><span class="level-badge {{ entry.level.css_class() }}">{{ entry.level }}</span></td>
+                <td class="col-message"><pre>{{ entry.message }}</pre></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+
+<script>
+document.querySelectorAll('.toggle-level').forEach(function(cb) {
+    cb.addEventListener('change', function() {
+        var level = this.getAttribute('data-level');
+        document.querySelectorAll('.log-row.' + level).forEach(function(row) {
+            row.style.display = cb.checked ? '' : 'none';
+        });
+    });
+});
+
+document.getElementById('toggle-groups').addEventListener('change', function() {
+    document.querySelectorAll('.group-start, .group-end').forEach(function(row) {
+        row.style.display = this.checked ? '' : 'none';
+    }.bind(this));
+});
+
+var sortBtn = document.getElementById('sort-toggle');
+var ascending = true;
+sortBtn.addEventListener('click', function() {
+    var tbody = document.querySelector('.timeline-table tbody');
+    var rows = Array.from(tbody.children);
+    rows.reverse();
+    rows.forEach(function(row) { tbody.appendChild(row); });
+    ascending = !ascending;
+    sortBtn.innerHTML = ascending ? '# &#x25B2;' : '# &#x25BC;';
+    sortBtn.title = ascending ? 'Reverse order' : 'Restore order';
+});
+
+document.querySelectorAll('.btn-epoch').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var epoch = this.getAttribute('data-epoch');
+        navigator.clipboard.writeText(epoch).then(function() {
+            var original = btn.textContent;
+            btn.textContent = 'copied!';
+            btn.classList.add('copied');
+            setTimeout(function() {
+                btn.textContent = original;
+                btn.classList.remove('copied');
+            }, 1200);
+        });
+    });
+});
+
+// Linkify URLs in log messages
+var urlPattern = /(https?:\/\/[^\s]+)/g;
+document.querySelectorAll('.col-message pre').forEach(function(pre) {
+    var text = pre.textContent;
+    var match;
+    var lastIndex = 0;
+    var fragment = document.createDocumentFragment();
+    var found = false;
+    while ((match = urlPattern.exec(text)) !== null) {
+        found = true;
+        if (match.index > lastIndex) {
+            fragment.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+        }
+        var a = document.createElement('a');
+        a.href = match[1];
+        a.textContent = match[1];
+        a.target = '_blank';
+        a.rel = 'noopener';
+        fragment.appendChild(a);
+        lastIndex = urlPattern.lastIndex;
+    }
+    if (found) {
+        if (lastIndex < text.length) {
+            fragment.appendChild(document.createTextNode(text.slice(lastIndex)));
+        }
+        pre.textContent = '';
+        pre.appendChild(fragment);
+    }
+});
+
+// Tips banner collapse/expand
+var tipsToggle = document.getElementById('tips-toggle');
+if (tipsToggle) {
+    var tipsList = document.getElementById('tips-list');
+    var tipsChevron = document.getElementById('tips-chevron');
+    tipsToggle.addEventListener('click', function() {
+        var expanded = tipsList.style.display !== 'none';
+        tipsList.style.display = expanded ? 'none' : '';
+        tipsChevron.textContent = expanded ? '▶' : '▼';
+    });
+}
+
+// Tips per-tip highlight toggle
+function applyTipRowFilter() {
+    var activeTipIds = Array.from(document.querySelectorAll('.tip-highlight-toggle:checked'))
+        .filter(function(cb) { return cb.getAttribute('data-has-marked-lines') === 'true'; })
+        .map(function(cb) { return cb.getAttribute('data-tip-id'); });
+
+    var filterActive = activeTipIds.length > 0;
+    document.querySelectorAll('.log-row').forEach(function(row) {
+        if (!filterActive) {
+            row.style.display = '';
+            return;
+        }
+
+        var rowHasAnySelectedTip = activeTipIds.some(function(tipId) {
+            return row.querySelector('.tip-indicator[data-tip-id="' + tipId + '"]') !== null;
+        });
+        row.style.display = rowHasAnySelectedTip ? '' : 'none';
+    });
+}
+
+document.querySelectorAll('.tip-highlight-toggle').forEach(function(cb) {
+    cb.addEventListener('change', function() {
+        applyTipRowFilter();
+    });
+});
+
+var clearTipFilterBtn = document.getElementById('clear-tip-filter');
+if (clearTipFilterBtn) {
+    clearTipFilterBtn.addEventListener('click', function() {
+        document.querySelectorAll('.tip-highlight-toggle').forEach(function(cb) {
+            cb.checked = false;
+        });
+        applyTipRowFilter();
+    });
+}
+
+// Clicking an in-row tip emoji jumps to the matching tip card in the banner.
+document.querySelectorAll('.tip-indicator').forEach(function(indicator) {
+    indicator.addEventListener('click', function() {
+        var tipId = this.getAttribute('data-tip-id');
+        var tipItem = document.querySelector('.tip-item[data-tip-id="' + tipId + '"]');
+        if (!tipItem) {
+            return;
+        }
+
+        if (tipsToggle && tipsList && tipsList.style.display === 'none') {
+            tipsList.style.display = '';
+            tipsChevron.textContent = '▼';
+        }
+
+        tipItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        tipItem.classList.add('tip-item-flash');
+        setTimeout(function() {
+            tipItem.classList.remove('tip-item-flash');
+        }, 900);
+    });
+});
+</script>
+{% endblock %}

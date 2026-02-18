@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Home — actions-recon{% endblock %}
+
+{% block content %}
+<section class="upload-section">
+    <h1>Upload GitHub Actions Logs</h1>
+    <p class="hint">
+        Upload a
+        <span class="tooltip">workflow log ZIP
+            <span class="tooltip-text">A ZIP archive downloaded from a GitHub Actions workflow run. <a href="https://docs.github.com/en/actions/monitoring-and-troubleshooting-workflows/monitoring-workflows/using-workflow-run-logs#downloading-logs" target="_blank" rel="noopener">Learn more &rarr;</a></span>
+        </span>
+        to analyze its contents.
+    </p>
+    <form action="/upload" method="post" enctype="multipart/form-data">
+        <label for="zipfile">Choose a .zip file:</label>
+        <input type="file" id="zipfile" name="zipfile" accept=".zip" required>
+        <button type="submit">Upload &amp; Analyze</button>
+    </form>
+</section>
+
+{% if !analyses.is_empty() %}
+<section class="analyses-section">
+    <h2>Previous Analyses</h2>
+    <ul class="analysis-list">
+        {% for name in analyses %}
+        <li><a href="/analysis/{{ name }}">{{ name }}.zip</a></li>
+        {% endfor %}
+    </ul>
+</section>
+{% endif %}
+
+<section class="cleanup-section">
+    <h2>Manage Local Files</h2>
+    <p class="hint">Storage path: <code>{{ upload_path }}</code></p>
+    <form action="/delete-all" method="post" onsubmit="return confirm('Delete all extracted files? This cannot be undone.');">
+        <button type="submit" class="btn-danger">Delete All Extracted Files</button>
+    </form>
+</section>
+{% endblock %}

@@ -1,0 +1,24 @@
+schema_version = 1
+id    = "wireguard-detected"
+name  = "WireGuard Detected"
+emoji = "🐉"
+docs  = "https://docs.github.com/en/actions/how-tos/manage-runners/github-hosted-runners/connect-to-a-private-network/connect-with-wireguard"
+created = "2026-02-17"
+updated = "2026-02-17"
+
+description = """
+Detected WireGuard VPN setup or usage in the workflow log.
+Helpful when diagnosing private network connectivity issues for GitHub-hosted runners.
+For precise detection, consider tightening the patterns to specific WireGuard commands
+(e.g. 'sudo apt install wireguard', 'ip link add dev wg0') to reduce false positives.
+"""
+
+[check]
+type = "contains_any_patterns"
+scope = "workflow"
+patterns = [
+  "(?i)\\bwireguard\\b",
+  "(?i)\\bwg-quick\\b",
+  "(?i)\\bwg\\s+show\\b",
+  "(?i)\\bprivate network\\b"
+]

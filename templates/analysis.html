@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Analysis: {{ analysis_id }}.zip — actions-recon{% endblock %}
+
+{% block content %}
+<section class="analysis-header">
+    <h1>Analysis: {{ analysis_id }}.zip</h1>
+    <p class="hint">
+        Extracted files from the uploaded
+        <span class="tooltip">workflow log ZIP
+            <span class="tooltip-text">A ZIP archive downloaded from a GitHub Actions workflow run containing logs for each job and step. <a href="https://docs.github.com/en/actions/monitoring-and-troubleshooting-workflows/monitoring-workflows/using-workflow-run-logs" target="_blank" rel="noopener">Learn more &rarr;</a></span>
+        </span>.
+        Click any file to view its timeline.
+    </p>
+    <a href="/" class="btn-back">&larr; Back to Home</a>
+</section>
+
+{% for group in groups %}
+<section class="file-group">
+    <h2>
+        {% if group.label == "Job Log" %}
+        <span class="tooltip">{{ group.label }}
+            <span class="tooltip-text">A job is a set of steps that execute on the same runner. Each workflow run contains one or more jobs. <a href="https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/using-jobs-in-a-workflow" target="_blank" rel="noopener">Learn more &rarr;</a></span>
+        </span>
+        {% else if group.label == "Step Log" %}
+        <span class="tooltip">{{ group.label }}
+            <span class="tooltip-text">A step is an individual task within a job — either a shell command or an action. Steps run sequentially. <a href="https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/using-pre-and-post-scripts-with-workflows" target="_blank" rel="noopener">Learn more &rarr;</a></span>
+        </span>
+        {% else if group.label == "Runner Diagnostics" %}
+        <span class="tooltip">{{ group.label }}
+            <span class="tooltip-text">Runner diagnostic logging adds two extra log files to the archive: the runner process log (runner coordination and setup) and the worker process log (job execution). Enabled via repository or organization secrets. <a href="https://docs.github.com/en/actions/how-tos/monitor-workflows/enable-debug-logging" target="_blank" rel="noopener">Learn more &rarr;</a></span>
+        </span>
+        {% else %}
+        {{ group.label }}
+        {% endif %}
+        <span class="badge">{{ group.entries.len() }}</span>
+    </h2>
+    <ul class="file-list">
+        {% for entry in group.entries %}
+        <li>
+            <a href="/analysis/{{ analysis_id }}/{{ entry.path }}">{{ entry.name }}</a>
+            <span class="file-size">{{ entry.size_display }}</span>
+        </li>
+        {% endfor %}
+    </ul>
+</section>
+{% endfor %}
+{% endblock %}
