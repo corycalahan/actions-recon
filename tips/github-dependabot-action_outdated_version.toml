@@ -1,0 +1,44 @@
+schema_version = 1
+id    = "dependabot-action-outdated-version"
+name  = "Newer version of github/dependabot-action available"
+emoji = "⬆️"
+docs  = "https://github.com/github/dependabot-action/releases"
+created = "2026-02-19"
+updated = "2026-02-19"
+
+description = """
+The workflow is using an outdated version of github/dependabot-action.
+The latest version available is v2 (currently v2.30.0).
+
+Note: The latest version shown here applies to GitHub.com (dotcom).
+GitHub Enterprise Server (GHES) bundles its own set of action versions —
+the latest may not yet be available on all GHES instances.
+
+github/dependabot-action is used internally by GitHub to run Dependabot
+update jobs. It receives frequent updates bringing new ecosystem support
+(Helm, Bun, uv, OpenTofu, vcpkg, rust-toolchain, Docker Compose, etc.)
+and security fixes. Running an older version may mean missing support for
+ecosystems your project uses or missing security fixes.
+
+All releases are on the v2 major line. The rolling @v2 tag always points
+to the latest stable release.
+
+Consider updating your workflow YAML:
+  uses: github/dependabot-action@v2
+
+See the releases page for the full changelog:
+  https://github.com/github/dependabot-action/releases
+
+Update the min_version field in this tip file when a new major version ships:
+  Latest as of 2026-02-19: v2.30.0
+"""
+
+[check]
+type  = "action_version_check"
+scope = "workflow"
+# Checks the resolved semver from the "Version: X.Y.Z" line after the download
+# header, so it works for both tag-pinned and SHA-pinned references.
+# All releases are v2.x; min_version tracks the major line.
+# Update min_version if a v3+ is ever released.
+action      = "github/dependabot-action"
+min_version = "2.0.0"

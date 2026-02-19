@@ -118,25 +118,26 @@ data/uploads/        # Extracted log files (gitignored)
 
 ### Tips Library
 
-The `tips/` directory contains TOML files that define automated troubleshooting checks. When a log file is viewed, tips are evaluated against its entries with optional per-tip scope (`all`, `workflow`, or `runner`), applicability mode (`all`, `standard_logs`, `debug_logs_enabled`, or `diagnostic_logs_enabled`), and status (`enabled`/`disabled`). Triggered tips appear in a collapsible banner with emoji indicators on matched rows when applicable.
+The `tips/` directory contains [TOML](https://toml.io/) files that define automated troubleshooting checks. When a log file is viewed, tips are evaluated against its entries with optional per-tip scope (`all`, `workflow`, or `runner`), applicability mode (`all`, `standard_logs`, `debug_logs_enabled`, or `diagnostic_logs_enabled`), and status (`enabled`/`disabled`). Triggered tips appear in a collapsible banner with emoji indicators on matched rows when applicable.
 
-For recommended defaults and when-to-use guidance, see the **Starter Presets** section in [tips/README.md](tips/README.md).
+For recommended defaults and when-to-use guidance, see the **Starter Tips** section in [tips/README.md](tips/README.md).
 
 **Adding a new tip:** Create a `.toml` file in `tips/` following the schema in [tips/README.md](tips/README.md). Supported check types include:
 
-| Check Type        | Description                                                                |
-|-------------------|----------------------------------------------------------------------------|
-| `pattern_match`   | Flag lines matching a regex pattern                                        |
-| `contains_any_patterns` | Flag lines matching any regex in a list                              |
-| `time_delta`      | Flag when elapsed-from-start exceeds a threshold                           |
-| `time_gap`        | Flag when a gap between adjacent lines is too large                        |
-| `step_duration`   | Flag when a specific step exceeds duration threshold                       |
-| `level_count`     | Flag when a log level count exceeds a threshold                            |
-| `missing_pattern` | Flag when an expected pattern is absent from the log                       |
-| `missing_any_pattern` | Flag when any expected pattern is absent                               |
-| `version_check`   | Flag when a captured version is below `min_version` or above `max_version` |
+| Check Type              | Description                                                                                 |
+|-------------------------|---------------------------------------------------------------------------------------------|
+| `pattern_match`         | Flag lines matching a regex pattern                                                         |
+| `contains_any_patterns` | Flag lines matching any regex in a list                                                     |
+| `time_delta`            | Flag when elapsed-from-start exceeds a threshold                                            |
+| `time_gap`              | Flag when a gap between adjacent lines is too large                                         |
+| `step_duration`         | Flag when a specific step exceeds duration threshold                                        |
+| `level_count`           | Flag when a log level count exceeds a threshold                                             |
+| `missing_pattern`       | Flag when an expected pattern is absent from the log                                        |
+| `missing_any_pattern`   | Flag when any expected pattern is absent                                                    |
+| `version_check`         | Flag when a captured version is below `min_version` or above `max_version`                  |
+| `action_version_check`  | Flag when a specific action's resolved semver is below `min_version` or above `max_version` |
 
-Example tip files: `error_lines.toml`, `job_timeout_risk.toml`, `many_warnings.toml`, `disk_space_issue.toml`, `missing_job_completion.toml`, `any_failure_signals.toml`, `missing_expected_markers.toml`, `slow_deploy_step.toml`, `proxy_detected.toml`, `wireguard_detected.toml`, `runner_version_below_ghes_minimum.toml`, `runner_version_not_dotcom_latest.toml`.
+Example tip files: `error_lines.toml`, `job_timeout_risk.toml`, `large_time_gap.toml`, `many_warnings.toml`, `disk_space_issue.toml`, `missing_job_completion.toml`, `any_failure_signals.toml`, `missing_expected_markers.toml`, `slow_deploy_step.toml`, `proxy_detected.toml`, `wireguard_detected.toml`, `runner_version_below_ghes_minimum.toml`, `runner_version_not_dotcom_latest.toml`, `actions-checkout_outdated_version.toml`, `actions-upload-artifact_outdated_version.toml`, `actions-download-artifact_outdated_version.toml`, `actions-cache_outdated_version.toml`, `actions-setup-node_outdated_version.toml`, `actions-setup-python_outdated_version.toml`, `actions-setup-java_outdated_version.toml`, `actions-setup-go_outdated_version.toml`, `actions-setup-dotnet_outdated_version.toml`, `actions-create-release_outdated_version.toml`, `actions-delete-package-versions_outdated_version.toml`, `actions-deploy-pages_outdated_version.toml`, `actions-github-script_outdated_version.toml`, `actions-jekyll-build-pages_outdated_version.toml`, `actions-labeler_outdated_version.toml`, `actions-stale_outdated_version.toml`, `github-codeql-action-init_outdated_version.toml`, `github-codeql-action-analyze_outdated_version.toml`, `github-codeql-action-autobuild_outdated_version.toml`, `github-codeql-action-upload-sarif_outdated_version.toml`, `github-dependabot-action_outdated_version.toml`.
 
 ### Routes
 

@@ -236,11 +236,28 @@ jobs:
 
           # Replace the multi-line GHES → runner version table in the description.
           # VERSION_TABLE contains embedded newlines, so write it to a temp file first —
-          # passing multiline content via awk -v or python3 -c arguments is unreliable.
-          # python3 -c (one-liner) avoids the YAML indentation conflict that arises when
-          # a bash heredoc body appears at column 0 inside a YAML literal block scalar.
+          # passing multiline content via awk -v arguments is unreliable.
           printf '%s' "${VERSION_TABLE}" > /tmp/ghes_vtable.txt
-          python3 -c "import re; t='tips/runner_version_below_ghes_minimum.toml'; v=open('/tmp/ghes_vtable.txt').read(); c=open(t).read(); open(t,'w').write(re.sub(r'(?:  GHES [0-9]+\.[0-9]+ \N{RIGHTWARDS ARROW} [^\n]+\n)*  GHES [0-9]+\.[0-9]+ \N{RIGHTWARDS ARROW} [^\n]*\(oldest supported; used as the floor here\)\.', v, c))"
+          python3 << 'PYEOF'
+          import re
+
+          TIP_FILE   = 'tips/runner_version_below_ghes_minimum.toml'
+          TABLE_FILE = '/tmp/ghes_vtable.txt'
+
+          replacement = open(TABLE_FILE).read()
+          content     = open(TIP_FILE).read()
+
+          # Match the existing GHES → runner version block:
+          #   one or more "  GHES X.Y → A.B.C," lines followed by
+          #   a final "  GHES X.Y → A.B.C (oldest supported; used as the floor here)." line
+          pattern = (
+              r'(?:  GHES [0-9]+\.[0-9]+ \N{RIGHTWARDS ARROW} [^\n]+\n)*'
+              r'  GHES [0-9]+\.[0-9]+ \N{RIGHTWARDS ARROW} [^\n]*'
+              r'\(oldest supported; used as the floor here\)\.'
+          )
+
+          open(TIP_FILE, 'w').write(re.sub(pattern, replacement, content))
+          PYEOF
 
           # Update the inline comment that names the oldest supported GHES release
           sed --in-place \

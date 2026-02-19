@@ -80,6 +80,8 @@ pub struct TipForm {
     pub max_version: String,
     #[serde(default)]
     pub pattern_version: String,
+    #[serde(default)]
+    pub action: String,
 }
 
 fn parse_optional_number<T>(field_name: &str, raw: &str) -> anyhow::Result<Option<T>>
@@ -223,6 +225,7 @@ pub async fn save_tip(
         threshold,
         min_version: Some(form.min_version.as_str()),
         max_version: Some(form.max_version.as_str()),
+        action: Some(form.action.as_str()),
     });
 
     match result {

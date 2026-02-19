@@ -25,7 +25,7 @@ Explain what the tip checks and what the engineer should do next.
 # Exactly ONE of the following check types:
 
 [check]
-type = "pattern_match"             # or "contains_any_patterns", "time_delta", "time_gap", "step_duration", "level_count", "missing_pattern", "missing_any_pattern"
+type = "pattern_match"             # or "contains_any_patterns", "time_delta", "time_gap", "step_duration", "level_count", "missing_pattern", "missing_any_pattern", "version_check", "action_version_check"
 scope = "all"                      # optional: "all" | "workflow" | "runner"
 applies_to = "all"                 # optional: "all" | "standard_logs" | "debug_logs_enabled" | "diagnostic_logs_enabled"
 
@@ -85,6 +85,19 @@ pattern = "Current runner version: '(\\d+\.\\d+\.\\d+)'"
 min_version = "2.319.1"
 # max_version = "3.0.0"   # optional upper bound
 
+# --- action_version_check ---
+# Flags when the resolved semver of a specific first-party action (read from the
+# "Version: X.Y.Z" line that follows every "Download immutable action package"
+# header) is below min_version or above max_version.
+# Works for both SHA-pinned and tag-pinned action references.
+# action: the owner/repo identifier of the action (e.g. "actions/checkout").
+# min_version: the minimum acceptable version (inclusive, optional).
+# max_version: the maximum acceptable version (inclusive, optional).
+# At least one of min_version or max_version must be set.
+action      = "actions/checkout"
+min_version = "6.0.0"
+# max_version = "7.0.0"   # optional upper bound
+
 # Scope notes:
 # - "all" (default): evaluate against workflow and runner logs
 # - "workflow": only evaluate against workflow logs
@@ -139,7 +152,7 @@ patterns = [
 ]
 ```
 
-## Starter Presets
+## Starter Tips
 
 Use these built-in tips as quick starting points:
 
@@ -156,6 +169,30 @@ Use these built-in tips as quick starting points:
 - `wireguard_detected.toml` (`contains_any_patterns`) — Detect WireGuard setup/use signals for private networking.
 - `runner_version_below_ghes_minimum.toml` (`version_check`) — Flag self-hosted runners below the minimum version required by the oldest supported GitHub Enterprise Server (GHES) release.
 - `runner_version_not_dotcom_latest.toml` (`version_check`) — Flag runners below the latest version available on GitHub.com.
+
+Frequently used Actions published by GitHub:
+
+- `actions-checkout_outdated_version.toml` (`action_version_check`) — Flag when a newer version of [`actions/checkout`](https://github.com/actions/checkout) is available.
+- `actions-upload-artifact_outdated_version.toml` (`action_version_check`) — Flag when a newer version of [`actions/upload-artifact`](https://github.com/actions/upload-artifact) is available.
+- `actions-download-artifact_outdated_version.toml` (`action_version_check`) — Flag when a newer version of [`actions/download-artifact`](https://github.com/actions/download-artifact) is available.
+- `actions-cache_outdated_version.toml` (`action_version_check`) — Flag when a newer version of [`actions/cache`](https://github.com/actions/cache) is available.
+- `actions-setup-node_outdated_version.toml` (`action_version_check`) — Flag when a newer version of [`actions/setup-node`](https://github.com/actions/setup-node) is available.
+- `actions-setup-python_outdated_version.toml` (`action_version_check`) — Flag when a newer version of [`actions/setup-python`](https://github.com/actions/setup-python) is available.
+- `actions-setup-java_outdated_version.toml` (`action_version_check`) — Flag when a newer version of [`actions/setup-java`](https://github.com/actions/setup-java) is available.
+- `actions-setup-go_outdated_version.toml` (`action_version_check`) — Flag when a newer version of [`actions/setup-go`](https://github.com/actions/setup-go) is available.
+- `actions-setup-dotnet_outdated_version.toml` (`action_version_check`) — Flag when a newer version of [`actions/setup-dotnet`](https://github.com/actions/setup-dotnet) is available.
+- `actions-create-release_outdated_version.toml` (`action_version_check`) — Flag when [`actions/create-release`](https://github.com/actions/create-release) is in use (archived; consider a maintained alternative).
+- `actions-delete-package-versions_outdated_version.toml` (`action_version_check`) — Flag when a newer version of [`actions/delete-package-versions`](https://github.com/actions/delete-package-versions) is available.
+- `actions-deploy-pages_outdated_version.toml` (`action_version_check`) — Flag when a newer version of [`actions/deploy-pages`](https://github.com/actions/deploy-pages) is available.
+- `actions-github-script_outdated_version.toml` (`action_version_check`) — Flag when a newer version of [`actions/github-script`](https://github.com/actions/github-script) is available.
+- `actions-jekyll-build-pages_outdated_version.toml` (`action_version_check`) — Flag when a newer version of [`actions/jekyll-build-pages`](https://github.com/actions/jekyll-build-pages) is available.
+- `actions-labeler_outdated_version.toml` (`action_version_check`) — Flag when a newer version of [`actions/labeler`](https://github.com/actions/labeler) is available.
+- `actions-stale_outdated_version.toml` (`action_version_check`) — Flag when a newer version of [`actions/stale`](https://github.com/actions/stale) is available.
+- `github-dependabot-action_outdated_version.toml` (`action_version_check`) — Flag when a newer version of [`github/dependabot-action`](https://github.com/github/dependabot-action) is available.
+- `github-codeql-action-init_outdated_version.toml` (`action_version_check`) — Flag when a newer version of [`github/codeql-action/init`](https://github.com/github/codeql-action) is available.
+- `github-codeql-action-analyze_outdated_version.toml` (`action_version_check`) — Flag when a newer version of [`github/codeql-action/analyze`](https://github.com/github/codeql-action) is available.
+- `github-codeql-action-autobuild_outdated_version.toml` (`action_version_check`) — Flag when a newer version of [`github/codeql-action/autobuild`](https://github.com/github/codeql-action) is available.
+- `github-codeql-action-upload-sarif_outdated_version.toml` (`action_version_check`) — Flag when a newer version of [`github/codeql-action/upload-sarif`](https://github.com/github/codeql-action) is available.
 
 Typical tuning pattern:
 

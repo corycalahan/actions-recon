@@ -1,0 +1,37 @@
+schema_version = 1
+id    = "setup-node-outdated-version"
+name  = "Newer version of actions/setup-node available"
+emoji = "⬆️"
+docs  = "https://github.com/actions/setup-node/releases"
+created = "2026-02-18"
+updated = "2026-02-18"
+
+description = """
+The workflow is using an outdated version of actions/setup-node.
+The latest major version available is v6.
+
+Note: The latest version shown here applies to GitHub.com (dotcom).
+GitHub Enterprise Server (GHES) bundles its own set of action versions —
+the latest may not yet be available on all GHES instances.
+
+Older major versions may lack support for newer Node.js versions, npm
+features, or contain known bugs that have been resolved in later releases.
+
+Consider updating your workflow YAML:
+  uses: actions/setup-node@v6
+
+See the releases page for the full changelog:
+  https://github.com/actions/setup-node/releases
+
+Update the min_version field in this tip file when a new major version ships:
+  Latest as of 2026-02-18: v6.2.0
+"""
+
+[check]
+type  = "action_version_check"
+scope = "workflow"
+# Checks the resolved semver from the "Version: X.Y.Z" line after the download
+# header, so it works for both tag-pinned and SHA-pinned references.
+# Update min_version when the minimum major version advances.
+action      = "actions/setup-node"
+min_version = "6.0.0"

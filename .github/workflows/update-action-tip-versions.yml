@@ -1,0 +1,385 @@
+name: Update Action Tip Versions
+
+on:
+  schedule:
+    # Runs weekly on Monday at 06:00 UTC (1 hour after the runner-tip workflow)
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run — print what would change without opening a PR'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-versions:
+    if: github.repository == 'corycalahan/actions-recon'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      # -----------------------------------------------------------------------
+      # 1. Fetch the latest GitHub release tag for every tracked action repo,
+      #    then compare with the min_version stored in each TOML tip file.
+      #    When the latest major version is newer than the current floor, or
+      #    the latest patch version has changed, update the TOML file.
+      #
+      #    Fields updated per file (when the latest version has advanced):
+      #      • min_version            — floor for action_version_check (major bump only)
+      #      • "Latest as of …"  line — informational, always kept current
+      #      • "latest major … is vN" — description prose (major bump only)
+      #      • "uses: action@vN"      — example snippet in description (major bump only)
+      #      • updated                — top-level date field
+      #
+      #    Each repo is queried only once even when multiple tip files share it
+      #    (e.g. all four github/codeql-action/* tips use the same repo).
+      # -----------------------------------------------------------------------
+      - name: Fetch latest versions and update TOML files
+        id: update
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 << 'PYEOF'
+          import json, os, re
+          from datetime import date
+          from urllib.request import urlopen, Request
+          from urllib.error import HTTPError
+
+          GH_TOKEN = os.environ.get("GH_TOKEN", "")
+          TODAY = date.today().isoformat()
+
+          # ------------------------------------------------------------------
+          # Map: tip file path → GitHub repo slug (owner/repo).
+          # Multiple tip files may share the same repo slug (codeql-action).
+          # ------------------------------------------------------------------
+          ENTRIES = [
+              ("tips/actions-cache_outdated_version.toml",                   "actions/cache"),
+              ("tips/actions-checkout_outdated_version.toml",                "actions/checkout"),
+              ("tips/actions-create-release_outdated_version.toml",          "actions/create-release"),
+              ("tips/actions-delete-package-versions_outdated_version.toml", "actions/delete-package-versions"),
+              ("tips/actions-deploy-pages_outdated_version.toml",            "actions/deploy-pages"),
+              ("tips/actions-download-artifact_outdated_version.toml",       "actions/download-artifact"),
+              ("tips/actions-github-script_outdated_version.toml",           "actions/github-script"),
+              ("tips/actions-jekyll-build-pages_outdated_version.toml",      "actions/jekyll-build-pages"),
+              ("tips/actions-labeler_outdated_version.toml",                 "actions/labeler"),
+              ("tips/actions-setup-dotnet_outdated_version.toml",            "actions/setup-dotnet"),
+              ("tips/actions-setup-go_outdated_version.toml",                "actions/setup-go"),
+              ("tips/actions-setup-java_outdated_version.toml",              "actions/setup-java"),
+              ("tips/actions-setup-node_outdated_version.toml",              "actions/setup-node"),
+              ("tips/actions-setup-python_outdated_version.toml",            "actions/setup-python"),
+              ("tips/actions-stale_outdated_version.toml",                   "actions/stale"),
+              ("tips/actions-upload-artifact_outdated_version.toml",         "actions/upload-artifact"),
+              ("tips/github-codeql-action-analyze_outdated_version.toml",    "github/codeql-action"),
+              ("tips/github-codeql-action-autobuild_outdated_version.toml",  "github/codeql-action"),
+              ("tips/github-codeql-action-init_outdated_version.toml",       "github/codeql-action"),
+              ("tips/github-codeql-action-upload-sarif_outdated_version.toml","github/codeql-action"),
+              ("tips/github-dependabot-action_outdated_version.toml",        "github/dependabot-action"),
+          ]
+
+          # ------------------------------------------------------------------
+          # Helper: call the GitHub REST API and return parsed JSON.
+          # ------------------------------------------------------------------
+          def gh_api(path):
+              req = Request(f"https://api.github.com/{path}")
+              req.add_header("Authorization", f"Bearer {GH_TOKEN}")
+              req.add_header("Accept", "application/vnd.github+json")
+              req.add_header("X-GitHub-Api-Version", "2022-11-28")
+              with urlopen(req) as resp:
+                  return json.loads(resp.read())
+
+          # ------------------------------------------------------------------
+          # Helper: extract the dotted-numeric version string from a tag.
+          # Handles non-standard prefixes like 'codeql-bundle-v2.24.1'.
+          # ------------------------------------------------------------------
+          def tag_version_str(tag):
+              m = re.search(r'v(\d[\d.]*)', tag)
+              return m.group(1).rstrip('.') if m else tag.lstrip('v')
+
+          # ------------------------------------------------------------------
+          # Helper: return (major, minor, patch) ints from a tag.
+          # ------------------------------------------------------------------
+          def parse_ver(tag):
+              parts = tag_version_str(tag).split(".")
+              while len(parts) < 3:
+                  parts.append("0")
+              return tuple(int(p) for p in parts[:3])
+
+          # ------------------------------------------------------------------
+          # 1. Fetch the latest release tag for every unique repo once.
+          # ------------------------------------------------------------------
+          unique_repos = sorted({repo for _, repo in ENTRIES})
+          repo_latest_tag: dict[str, str] = {}
+
+          print("=== Fetching latest release tags ===")
+          for repo in unique_repos:
+              try:
+                  data = gh_api(f"repos/{repo}/releases/latest")
+                  tag = data["tag_name"]
+                  # Some repos (e.g. github/codeql-action) publish non-version
+                  # tags (like "codeql-bundle-v*") as their "latest" release.
+                  # If the tag doesn't look like vN[.x.y], scan the 30 most
+                  # recent releases and pick the first one that does.
+                  if not re.match(r'^v\d', tag):
+                      releases = gh_api(f"repos/{repo}/releases?per_page=30")
+                      resolved = next(
+                          (r["tag_name"] for r in releases if re.match(r'^v\d', r["tag_name"])),
+                          tag,  # fall back to the original if none found
+                      )
+                      print(f"  (non-version latest tag {tag!r}; resolved to {resolved!r})")
+                      tag = resolved
+              except HTTPError as exc:
+                  # Archived or unusual repos may return 404; skip gracefully.
+                  print(f"WARNING: could not fetch latest release for {repo}: {exc}")
+                  tag = None
+              repo_latest_tag[repo] = tag
+              print(f"  {repo}: {tag}")
+
+          # ------------------------------------------------------------------
+          # 2. Process each tip file.
+          # ------------------------------------------------------------------
+          changes: list[dict] = []
+
+          for tip_file, gh_repo in ENTRIES:
+              latest_tag = repo_latest_tag.get(gh_repo)
+              if latest_tag is None:
+                  print(f"SKIP {tip_file}: no release tag available for {gh_repo}")
+                  continue
+
+              latest_ver = parse_ver(latest_tag)                           # (6, 0, 2) or (8, 0, 0)
+              latest_str = ".".join(str(p) for p in latest_ver)          # always "X.Y.Z" — normalises bare tags like "v8"
+              latest_major = latest_ver[0]
+
+              with open(tip_file) as fh:
+                  original = fh.read()
+
+              content = original
+
+              # ---- read current min_version ----
+              m = re.search(r'^min_version\s*=\s*"(\d+\.\d+\.\d+)"', content, re.MULTILINE)
+              if not m:
+                  print(f"WARNING: no min_version found in {tip_file} — skipping")
+                  continue
+              cur_min          = m.group(1)                          # "6.0.0"
+              cur_min_ver      = parse_ver(cur_min)                  # (6, 0, 0)
+              cur_min_major    = cur_min_ver[0]                      # 6
+              major_bump       = latest_major > cur_min_major
+
+              # ---- read current "Latest as of" version ----
+              m2 = re.search(r'Latest as of \d{4}-\d{2}-\d{2}: v([\d.]+)', content)
+              cur_latest_str   = m2.group(1) if m2 else None        # "6.0.2" or None
+              latest_changed   = (cur_latest_str != latest_str)
+
+              if not major_bump and not latest_changed:
+                  print(f"  OK (no change): {tip_file}")
+                  continue
+
+              print(f"  UPDATING {tip_file}  (major_bump={major_bump}, latest_changed={latest_changed})")
+
+              # ---- 2a. Always update "Latest as of …" line ----
+              content = re.sub(
+                  r'Latest as of \d{4}-\d{2}-\d{2}: v[\d.]+',
+                  f'Latest as of {TODAY}: v{latest_str}',
+                  content,
+              )
+
+              if major_bump:
+                  # ---- 2b. Update min_version floor ----
+                  content = re.sub(
+                      r'^min_version\s*=\s*"\d+\.\d+\.\d+"',
+                      f'min_version = "{latest_major}.0.0"',
+                      content,
+                      flags=re.MULTILINE,
+                  )
+
+                  # ---- 2c. Update description prose: "latest major … is vN" ----
+                  content = re.sub(
+                      r'The latest major version available is v\d+\.',
+                      f'The latest major version available is v{latest_major}.',
+                      content,
+                  )
+
+                  # Dependabot style: "latest version available is v2 (currently v2.30.0)."
+                  content = re.sub(
+                      r'The latest version available is v\d+ \(currently v[\d.]+\)\.',
+                      f'The latest version available is v{latest_major} (currently v{latest_str}).',
+                      content,
+                  )
+
+                  # Jekyll style: "All releases are currently on the v1 major line; the latest patch is v1.0.13."
+                  content = re.sub(
+                      r'All releases are currently on the v\d+ major line; the latest patch is v[\d.]+\.',
+                      f'All releases are currently on the v{latest_major} major line; the latest patch is v{latest_str}.',
+                      content,
+                  )
+
+                  # ---- 2d. Update the example `uses: action@vN` snippet ----
+                  # Extract the action slug from the [check] section to build
+                  # a precise pattern (avoids matching unrelated lines).
+                  m_action = re.search(r'^action\s*=\s*"([^"]+)"', content, re.MULTILINE)
+                  if m_action:
+                      action_slug = m_action.group(1)   # e.g. "actions/checkout"
+                      content = re.sub(
+                          r'uses: ' + re.escape(action_slug) + r'@v\d+',
+                          f'uses: {action_slug}@v{latest_major}',
+                          content,
+                      )
+
+              # ---- 2e. Bump top-level updated date ----
+              content = re.sub(
+                  r'^updated\s*=\s*"\d{4}-\d{2}-\d{2}"',
+                  f'updated = "{TODAY}"',
+                  content,
+                  flags=re.MULTILINE,
+              )
+
+              if content == original:
+                  print(f"  WARNING: computed change for {tip_file} but content is identical — check regexes")
+                  continue
+
+              with open(tip_file, "w") as fh:
+                  fh.write(content)
+
+              changes.append({
+                  "file":        tip_file,
+                  "repo":        gh_repo,
+                  "old_min":     cur_min,
+                  "new_min":     f"{latest_major}.0.0" if major_bump else cur_min,
+                  "old_latest":  f"v{cur_latest_str}" if cur_latest_str else "unknown",
+                  "new_latest":  latest_tag,
+                  "major_bump":  major_bump,
+              })
+
+          # ------------------------------------------------------------------
+          # 3. Write summary JSON consumed by later steps.
+          # ------------------------------------------------------------------
+          with open("/tmp/action_tip_changes.json", "w") as fh:
+              json.dump(changes, fh, indent=2)
+
+          print(f"\n=== Summary: {len(changes)} file(s) updated ===")
+          for c in changes:
+              bump_note = f"(major bump: {c['old_min']} → {c['new_min']})" if c["major_bump"] else "(patch/date only)"
+              print(f"  {c['file']}: {c['old_latest']} → {c['new_latest']} {bump_note}")
+
+          if not changes:
+              print("All action tip files are already up to date.")
+          PYEOF
+
+      # -----------------------------------------------------------------------
+      # 2. Determine whether any files were actually updated
+      # -----------------------------------------------------------------------
+      - name: Determine if updates are needed
+        id: diff
+        run: |
+          COUNT=$(python3 -c "import json; d=json.load(open('/tmp/action_tip_changes.json')); print(len(d))")
+          echo "changed_count=${COUNT}" >> "${GITHUB_OUTPUT}"
+          echo "has_changes=$([ "${COUNT}" -gt 0 ] && echo true || echo false)" >> "${GITHUB_OUTPUT}"
+          echo "Files changed: ${COUNT}"
+
+      # -----------------------------------------------------------------------
+      # 3. Open a pull request (unless dry-run or nothing changed)
+      # -----------------------------------------------------------------------
+      - name: Open pull request
+        if: |
+          !inputs.dry_run &&
+          steps.diff.outputs.has_changes == 'true'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs   = require('fs');
+            const { execSync } = require('child_process');
+
+            const today   = new Date().toISOString().slice(0, 10);
+            const branch  = `chore/update-action-tip-versions-${today}`;
+            const changes = JSON.parse(fs.readFileSync('/tmp/action_tip_changes.json', 'utf8'));
+
+            // Configure git identity
+            // 41898282 is the permanent GitHub user ID for github-actions[bot].
+            execSync('git config user.name  "github-actions[bot]"');
+            execSync('git config user.email "41898282+github-actions[bot]@users.noreply.github.com"');
+
+            // Delete any stale chore/update-action-tip-versions-* branches left
+            // over from prior runs (e.g. closed-without-merge PRs).
+            const allBranches = await github.paginate(github.rest.repos.listBranches, {
+              owner:    context.repo.owner,
+              repo:     context.repo.repo,
+              per_page: 100,
+            });
+            for (const b of allBranches) {
+              if (b.name.startsWith('chore/update-action-tip-versions-')) {
+                core.info(`Deleting stale branch: ${b.name}`);
+                await github.rest.git.deleteRef({
+                  owner: context.repo.owner,
+                  repo:  context.repo.repo,
+                  ref:   `heads/${b.name}`,
+                });
+              }
+            }
+
+            // Collect the list of changed files for `git add`
+            const changedFiles = changes.map(c => c.file).join(' ');
+
+            // Create and push the branch
+            execSync(`git checkout -b ${branch}`);
+            execSync(`git add ${changedFiles}`);
+            execSync(`git commit -m "chore: update action tip versions (${today})"`);
+            execSync(`git push origin ${branch}`);
+
+            // Build PR body
+            const lines = [
+              'Automated update of action version tip files.',
+              '',
+              '| Tip file | Repo | Previous latest | New latest | Type |',
+              '|---|---|---|---|---|',
+            ];
+            for (const c of changes) {
+              const type = c.major_bump
+                ? `⬆️ major \`${c.old_min}\` → \`${c.new_min}\``
+                : '📅 patch / date';
+              lines.push(`| \`${c.file}\` | \`${c.repo}\` | \`${c.old_latest}\` | \`${c.new_latest}\` | ${type} |`);
+            }
+            lines.push('');
+            lines.push('---');
+            lines.push('_Opened automatically by the [update-action-tip-versions](.github/workflows/update-action-tip-versions.yml) workflow._');
+
+            const prResponse = await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              title: `chore: update action tip versions (${today})`,
+              head:  branch,
+              base:  context.payload.repository.default_branch,
+              body:  lines.join('\n'),
+            });
+            core.info(`Pull request opened: ${prResponse.data.html_url}`);
+
+      # -----------------------------------------------------------------------
+      # 4. Dry-run summary (no-op step, just logs)
+      # -----------------------------------------------------------------------
+      - name: Dry run summary
+        if: inputs.dry_run
+        run: |
+          echo "=== DRY RUN — no changes committed or PR opened ==="
+          python3 - << 'PYEOF'
+          import json
+          changes = json.load(open('/tmp/action_tip_changes.json'))
+          if not changes:
+              print("All action tip files are already up to date — no PR needed.")
+          else:
+              print(f"{len(changes)} file(s) would be updated:")
+              for c in changes:
+                  bump = f"  [major] min_version {c['old_min']} → {c['new_min']}" if c['major_bump'] else "  [patch/date only]"
+                  print(f"  {c['file']}: {c['old_latest']} → {c['new_latest']}{bump}")
+          PYEOF
+
+      # -----------------------------------------------------------------------
+      # 5. No-op when all files are already current
+      # -----------------------------------------------------------------------
+      - name: Already up to date
+        if: steps.diff.outputs.has_changes == 'false'
+        run: |
+          echo "All action tip files are already up to date — no PR needed."
