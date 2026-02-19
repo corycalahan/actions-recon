@@ -11,7 +11,7 @@ tower = "0.5"
 tower-http = { version = "0.6", features = ["fs"] }
 
 # Templates
-askama = "0.13"
+askama = "0.15"
 
 # CLI
 clap = { version = "4", features = ["derive"] }
@@ -24,16 +24,16 @@ anyhow = "1"
 thiserror = "2"
 
 # ZIP extraction
-zip = "2"
+zip = "8"
 
 # Multipart uploads
-axum-extra = { version = "0.10", features = ["multipart"] }
+axum-extra = { version = "0.12", features = ["multipart"] }
 
 # URL encoding
 urlencoding = "2"
 
 # Tips engine
-toml = "0.8"
+toml = "1.0"
 serde = { version = "1", features = ["derive"] }
 regex = "1"
 
