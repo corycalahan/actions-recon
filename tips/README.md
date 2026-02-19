@@ -74,6 +74,17 @@ pattern = "Job completed"
 # Flags when one or more expected patterns are absent.
 patterns = ["Finishing:", "Upload complete"]
 
+# --- version_check ---
+# Flags when the version extracted by `pattern` (capture group 1) is below
+# min_version or above max_version. Comparison is semantic (major.minor.patch).
+# At least one of min_version or max_version must be set.
+# pattern: regex with one capture group that yields the version string.
+# min_version: the minimum acceptable version (inclusive, optional).
+# max_version: the maximum acceptable version (inclusive, optional).
+pattern = "Current runner version: '(\\d+\.\\d+\.\\d+)'"
+min_version = "2.319.1"
+# max_version = "3.0.0"   # optional upper bound
+
 # Scope notes:
 # - "all" (default): evaluate against workflow and runner logs
 # - "workflow": only evaluate against workflow logs
@@ -143,6 +154,8 @@ Use these built-in tips as quick starting points:
 - `slow_deploy_step.toml` (`step_duration`) — Detect a specific step taking longer than expected.
 - `proxy_detected.toml` (`contains_any_patterns`) — Detect proxy environment/configuration signals.
 - `wireguard_detected.toml` (`contains_any_patterns`) — Detect WireGuard setup/use signals for private networking.
+- `runner_version_below_ghes_minimum.toml` (`version_check`) — Flag self-hosted runners below the minimum version required by the oldest supported GitHub Enterprise Server (GHES) release.
+- `runner_version_not_dotcom_latest.toml` (`version_check`) — Flag runners below the latest version available on GitHub.com.
 
 Typical tuning pattern:
 
