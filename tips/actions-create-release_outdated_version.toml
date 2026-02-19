@@ -1,0 +1,39 @@
+schema_version = 1
+id    = "create-release-outdated-version"
+name  = "actions/create-release is archived — consider an alternative"
+emoji = "⚠️"
+docs  = "https://github.com/actions/create-release/releases"
+created = "2026-02-19"
+updated = "2026-02-19"
+
+description = """
+The workflow is using actions/create-release, which was archived by its
+maintainers on 2021-03-04 and is no longer actively developed.
+
+The latest released version is v1.1.4 (2020-09-14). No further updates,
+security patches, or Node.js runtime upgrades will be made.
+
+Consider migrating to a maintained alternative such as:
+  • The GitHub Releases REST API via actions/github-script
+  • The GitHub CLI (gh release create) in a run step
+
+If you must stay on this action, at minimum ensure you are on the latest
+available version:
+  uses: actions/create-release@v1.1.4
+
+See the archived repository for historical context:
+  https://github.com/actions/create-release
+
+Update the min_version field in this tip file if any patch release is ever
+published:
+  Latest as of 2026-02-19: v1.1.4
+"""
+
+[check]
+type  = "action_version_check"
+scope = "workflow"
+# Checks the resolved semver from the "Version: X.Y.Z" line after the
+# download header; works for both tag-pinned and SHA-pinned references.
+# This action is archived; min_version reflects the last published release.
+action      = "actions/create-release"
+min_version = "1.0.0"

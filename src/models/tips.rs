@@ -60,6 +60,9 @@ struct CheckToml {
     min_version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     max_version: Option<String>,
+    /// For `action_version_check`: the `owner/repo` of the action to check.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    action: Option<String>,
 }
 
 // ── Loaded tip ───────────────────────────────────────────────────────────────
@@ -157,6 +160,22 @@ pub enum Check {
     /// At least one of `min_version` or `max_version` must be set.
     VersionCheck {
         regex: Regex,
+        min_version: Option<[u64; 3]>,
+        max_version: Option<[u64; 3]>,
+    },
+    /// Flag when the version reported for a specific first-party action is outside bounds.
+    ///
+    /// Matches log pairs:
+    ///   `##[group]Download immutable action package 'owner/repo@<ref>'`
+    ///   `Version: X.Y.Z`
+    /// Works for both SHA-pinned (`@abc123`) and tag-pinned (`@v4`) references.
+    ActionVersionCheck {
+        /// The `owner/repo` identifier for display in details.
+        action: String,
+        /// Pre-compiled regex matching the download header line for this action.
+        action_regex: Regex,
+        /// Pre-compiled regex capturing the semver from the following `Version:` line.
+        version_regex: Regex,
         min_version: Option<[u64; 3]>,
         max_version: Option<[u64; 3]>,
     },
@@ -377,6 +396,56 @@ fn load_tip_file(path: &Path) -> anyhow::Result<Tip> {
                 }
                 Check::VersionCheck { regex, min_version, max_version }
             }
+            "action_version_check" => {
+                let action = raw
+                    .check
+                    .action
+                    .as_deref()
+                    .ok_or_else(|| anyhow::anyhow!("action_version_check requires 'action'"))?
+                    .trim()
+                    .to_string();
+                if action.is_empty() {
+                    anyhow::bail!("action_version_check 'action' must be non-empty");
+                }
+                if !action.contains('/') {
+                    anyhow::bail!(
+                        "action_version_check 'action' must be in 'owner/repo' format, got {action:?}"
+                    );
+                }
+                // Build a regex that matches the download-header line for this action,
+                // regardless of whether the ref is a tag (@v4) or a full/partial SHA.
+                let escaped = regex::escape(&action);
+                let action_regex =
+                    Regex::new(&format!(r"Download immutable action package '{escaped}@"))?;
+                // Matches the "Version: X.Y.Z" line that immediately follows.
+                let version_regex = Regex::new(r"^Version: (\d+\.\d+\.\d+)$")?;
+                let min_version = raw
+                    .check
+                    .min_version
+                    .as_deref()
+                    .map(parse_version_triple)
+                    .transpose()
+                    .map_err(|e| anyhow::anyhow!("Invalid min_version: {e}"))?;
+                let max_version = raw
+                    .check
+                    .max_version
+                    .as_deref()
+                    .map(parse_version_triple)
+                    .transpose()
+                    .map_err(|e| anyhow::anyhow!("Invalid max_version: {e}"))?;
+                if min_version.is_none() && max_version.is_none() {
+                    anyhow::bail!(
+                        "action_version_check requires at least one of 'min_version' or 'max_version'"
+                    );
+                }
+                Check::ActionVersionCheck {
+                    action,
+                    action_regex,
+                    version_regex,
+                    min_version,
+                    max_version,
+                }
+            }
             other => anyhow::bail!("Unknown check type: {other}"),
         };
 
@@ -419,6 +488,8 @@ pub struct TipSummary {
     pub threshold: Option<usize>,
     pub min_version: Option<String>,
     pub max_version: Option<String>,
+    /// For `action_version_check`: the `owner/repo` of the action.
+    pub action: Option<String>,
     /// Date the tip was first created (YYYY-MM-DD).
     pub created: Option<String>,
     /// Date the tip was last updated (YYYY-MM-DD).
@@ -469,6 +540,7 @@ pub fn load_tip_summaries(dir: &Path) -> Vec<TipSummary> {
                     threshold: None,
                     min_version: None,
                     max_version: None,
+                    action: None,
                     created: None,
                     updated: None,
                     error: Some(format!("Read error: {e}")),
@@ -499,6 +571,7 @@ pub fn load_tip_summaries(dir: &Path) -> Vec<TipSummary> {
                     threshold: raw.check.threshold,
                     min_version: raw.check.min_version,
                     max_version: raw.check.max_version,
+                    action: raw.check.action,
                     created: raw.created,
                     updated: raw.updated,
                     error: None,
@@ -525,6 +598,7 @@ pub fn load_tip_summaries(dir: &Path) -> Vec<TipSummary> {
                     threshold: None,
                     min_version: None,
                     max_version: None,
+                    action: None,
                     created: None,
                     updated: None,
                     error: Some(format!("Parse error: {e}")),
@@ -559,6 +633,8 @@ pub struct SaveTipInput<'a> {
     pub threshold: Option<usize>,
     pub min_version: Option<&'a str>,
     pub max_version: Option<&'a str>,
+    /// For `action_version_check`: the `owner/repo` of the action.
+    pub action: Option<&'a str>,
 }
 
 /// Save a tip to a TOML file. The filename is derived from the tip ID.
@@ -644,6 +720,7 @@ pub fn save_tip(input: SaveTipInput<'_>) -> anyhow::Result<()> {
             threshold: input.threshold,
             min_version: input.min_version.filter(|s| !s.is_empty()).map(|s| s.to_string()),
             max_version: input.max_version.filter(|s| !s.is_empty()).map(|s| s.to_string()),
+            action: input.action.filter(|s| !s.is_empty()).map(|s| s.to_string()),
         },
     };
 
@@ -783,6 +860,21 @@ fn evaluate_tip(tip: &Tip, entries: &[LogEntry]) -> TipResult {
             min_version,
             max_version,
         } => eval_version_check(tip, entries, regex, *min_version, *max_version),
+        Check::ActionVersionCheck {
+            action,
+            action_regex,
+            version_regex,
+            min_version,
+            max_version,
+        } => eval_action_version_check(
+            tip,
+            entries,
+            action,
+            action_regex,
+            version_regex,
+            *min_version,
+            *max_version,
+        ),
     }
 }
 
@@ -1185,6 +1277,86 @@ fn eval_version_check(
         triggered: false,
         detail: String::new(),
         marked_lines: Vec::new(),
+    }
+}
+
+/// Evaluate an `action_version_check` tip.
+///
+/// For every log pair:
+///   `##[group]Download immutable action package 'owner/repo@<ref>'`  (any ref format)
+///   `Version: X.Y.Z`
+/// check if the resolved semver falls outside `[min_version, max_version]`.
+///
+/// Both SHA-pinned (`@de0fac2…`) and tag-pinned (`@v4`) refs are handled
+/// because the version is read from the `Version:` line, not the ref itself.
+fn eval_action_version_check(
+    tip: &Tip,
+    entries: &[LogEntry],
+    action: &str,
+    action_regex: &Regex,
+    version_regex: &Regex,
+    min_version: Option<[u64; 3]>,
+    max_version: Option<[u64; 3]>,
+) -> TipResult {
+    let mut marked_lines: Vec<usize> = Vec::new();
+    let mut first_detail = String::new();
+
+    for i in 0..entries.len() {
+        let entry = &entries[i];
+        if !action_regex.is_match(&entry.message) {
+            continue;
+        }
+
+        // Found a download-header line for this action.
+        // Scan the next few entries for "Version: X.Y.Z".
+        let version_entry = entries
+            .get(i + 1..)
+            .unwrap_or(&[])
+            .iter()
+            .take(5)
+            .find(|e| version_regex.is_match(&e.message));
+
+        let Some(ver_entry) = version_entry else {
+            continue; // No version line nearby — skip silently.
+        };
+
+        let Some(caps) = version_regex.captures(&ver_entry.message) else {
+            continue;
+        };
+        let Some(version_str) = caps.get(1).map(|m| m.as_str()) else {
+            continue;
+        };
+        let Ok(found) = parse_version_triple(version_str) else {
+            continue;
+        };
+
+        let below_min = min_version.is_some_and(|min| found < min);
+        let above_max = max_version.is_some_and(|max| found > max);
+
+        if below_min || above_max {
+            marked_lines.push(entry.line_number);
+            marked_lines.push(ver_entry.line_number);
+            if first_detail.is_empty() {
+                let found_str = format_version(found);
+                first_detail = if below_min {
+                    let min_str = format_version(min_version.unwrap());
+                    format!("{action} version {found_str} is below minimum {min_str}")
+                } else {
+                    let max_str = format_version(max_version.unwrap());
+                    format!("{action} version {found_str} is above maximum {max_str}")
+                };
+            }
+        }
+    }
+
+    marked_lines.dedup();
+    let triggered = !marked_lines.is_empty();
+
+    TipResult {
+        tip: tip.clone(),
+        triggered,
+        detail: first_detail,
+        marked_lines,
     }
 }
 
@@ -1681,5 +1853,109 @@ pattern = "error"
         assert_eq!(format_duration_detail(3_661_000), "Elapsed: 1h 1m 1s");
         assert_eq!(format_duration_detail(65_000), "Elapsed: 1m 5s");
         assert_eq!(format_duration_detail(4_000), "Elapsed: 4s");
+    }
+
+    // ── action_version_check ──────────────────────────────────────────────────
+
+    /// Build a two-line workflow log simulating a download header + version line.
+    fn action_log(action: &str, reference: &str, version: &str) -> Vec<log_parser::LogEntry> {
+        let raw = format!(
+            "2025-04-30T00:00:00Z ##[group]Download immutable action package '{action}@{reference}'\n\
+             2025-04-30T00:00:00Z Version: {version}\n"
+        );
+        log_parser::parse_workflow_log(&raw)
+    }
+
+    fn action_version_check_tip(action: &str, min_version: &str) -> Tip {
+        let escaped = regex::escape(action);
+        Tip {
+            id: "test-action-version".into(),
+            name: "Test Action Version".into(),
+            emoji: "🧪".into(),
+            docs: None,
+            description: None,
+            enabled: true,
+            scope: TipScope::Workflow,
+            applies_to: TipAppliesTo::All,
+            check: Check::ActionVersionCheck {
+                action: action.to_string(),
+                action_regex: Regex::new(&format!(
+                    r"Download immutable action package '{escaped}@"
+                ))
+                .unwrap(),
+                version_regex: Regex::new(r"^Version: (\d+\.\d+\.\d+)$").unwrap(),
+                min_version: Some(parse_version_triple(min_version).unwrap()),
+                max_version: None,
+            },
+        }
+    }
+
+    #[test]
+    fn test_action_version_check_triggered_for_tag_ref() {
+        // Tag pin @v4 resolves to version 4.2.2 — below the floor of 6.0.0.
+        let entries = action_log("actions/checkout", "v4", "4.2.2");
+        let tip = action_version_check_tip("actions/checkout", "6.0.0");
+        let results = evaluate_tips_for_log(&[tip], &entries, LogKind::Workflow);
+        assert_eq!(results.len(), 1);
+        let r = &results[0];
+        assert!(r.triggered);
+        assert!(r.detail.contains("4.2.2"), "detail: {}", r.detail);
+        assert!(r.detail.contains("6.0.0"), "detail: {}", r.detail);
+        // Both the group header line and the Version line should be marked.
+        assert_eq!(r.marked_lines.len(), 2);
+    }
+
+    #[test]
+    fn test_action_version_check_triggered_for_sha_ref() {
+        // SHA pin resolves to version 4.2.2 — same outcome regardless of ref format.
+        let sha = "de0fac2e4500dabe0009e67214ff5f5447ce83dd";
+        let entries = action_log("actions/checkout", sha, "4.2.2");
+        let tip = action_version_check_tip("actions/checkout", "6.0.0");
+        let results = evaluate_tips_for_log(&[tip], &entries, LogKind::Workflow);
+        assert_eq!(results.len(), 1);
+        assert!(results[0].triggered);
+    }
+
+    #[test]
+    fn test_action_version_check_not_triggered_when_current() {
+        // Version 6.0.2 meets the floor of 6.0.0 — should not trigger.
+        let entries = action_log("actions/checkout", "v6", "6.0.2");
+        let tip = action_version_check_tip("actions/checkout", "6.0.0");
+        let results = evaluate_tips_for_log(&[tip], &entries, LogKind::Workflow);
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].triggered);
+        assert!(results[0].marked_lines.is_empty());
+    }
+
+    #[test]
+    fn test_action_version_check_ignores_other_actions() {
+        // Log contains actions/setup-node@v4 (old), but tip watches actions/checkout.
+        let entries = action_log("actions/setup-node", "v4", "4.1.0");
+        let tip = action_version_check_tip("actions/checkout", "6.0.0");
+        let results = evaluate_tips_for_log(&[tip], &entries, LogKind::Workflow);
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].triggered);
+    }
+
+    #[test]
+    fn test_load_action_version_check_toml() {
+        let toml_content = r#"
+id = "actions-checkout-outdated"
+name = "Checkout Outdated"
+emoji = "🧪"
+
+[check]
+type        = "action_version_check"
+scope       = "workflow"
+action      = "actions/checkout"
+min_version = "6.0.0"
+"#;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test_action_version.toml");
+        std::fs::write(&path, toml_content).unwrap();
+
+        let tip = load_tip_file(&path).unwrap();
+        assert_eq!(tip.id, "actions-checkout-outdated");
+        assert!(matches!(tip.check, Check::ActionVersionCheck { .. }));
     }
 }
