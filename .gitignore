@@ -2,3 +2,6 @@
 /data
 .env
 TODO.md
+
+# macOS specific files
+.DS_Store

@@ -1,0 +1,346 @@
+name: Update Runner Tip Versions
+
+on:
+  schedule:
+    # Runs weekly on Monday at 05:00 UTC
+    - cron: '0 5 * * 1'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run — print what would change without opening a PR'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-versions:
+    if: github.repository == 'corycalahan/actions-recon'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      # -----------------------------------------------------------------------
+      # 1. Fetch latest dotcom runner version
+      # -----------------------------------------------------------------------
+      - name: Fetch latest dotcom runner version
+        id: dotcom
+        run: |
+          LATEST_DOTCOM=$(
+            curl --silent --location \
+              --header "Accept: application/vnd.github+json" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/actions/runner/releases/latest" \
+              | jq --raw-output '.tag_name | ltrimstr("v")'
+          )
+          echo "version=${LATEST_DOTCOM}" >> "${GITHUB_OUTPUT}"
+          echo "Latest dotcom runner version: ${LATEST_DOTCOM}"
+
+      # -----------------------------------------------------------------------
+      # 2. Fetch GHES minimum runner version table
+      #    The raw Markdown at github/docs contains lines like:
+      #      | 3.19 | 2.328.0 ([release notes](...)) |
+      #    We parse the oldest-supported GHES release (the last row whose
+      #    GHES version appears in the table) to find the floor version.
+      #
+      #    Strategy:
+      #      a) Collect the raw Markdown from github/docs.
+      #      b) Extract all "| GHES | runner_version |" rows from the
+      #         "Minimum Actions Runner application versions" table.
+      #      c) Sort by GHES version ascending; pick the smallest GHES version
+      #         → that row's runner version becomes the new min_version floor.
+      # -----------------------------------------------------------------------
+      - name: Fetch GHES minimum runner version (floor)
+        id: ghes
+        run: |
+          RAW_MD=$(
+            curl --silent --location \
+              "https://raw.githubusercontent.com/github/docs/refs/heads/main/content/admin/all-releases.md"
+          )
+
+          # Pull out only the rows in the Runner versions table.
+          # Each data row matches:  | 3.XX | 2.YYY.Z ([release notes](...)) |
+          # The "release notes" text distinguishes these rows from the CodeQL
+          # CLI versions table, which uses the same column format but links to
+          # "changelog" instead.
+          RUNNER_TABLE=$(
+            echo "${RAW_MD}" \
+              | grep --extended-regexp '^\| [0-9]+\.[0-9]+ +\| [0-9]+\.[0-9]+\.[0-9]+ .*release notes'
+          )
+          echo "Runner table rows found:"
+          echo "${RUNNER_TABLE}"
+
+          # Dynamically determine how many GHES versions are currently supported
+          # by fetching the release dates JSON from the docs repo and counting
+          # versions that have already GA'd and haven't hit their deprecation date.
+          # https://github.com/github/docs/blob/main/src/ghes-releases/lib/enterprise-dates.json
+          TODAY=$(date --utc +%Y-%m-%d)
+          DATES_JSON=$(
+            curl --silent --location \
+              "https://raw.githubusercontent.com/github/docs/main/src/ghes-releases/lib/enterprise-dates.json"
+          )
+          # Filter to supported versions once, then derive count and list from that result.
+          SUPPORTED_VERSIONS_JSON=$(
+            echo "${DATES_JSON}" \
+              | jq --arg today "${TODAY}" \
+                  '[to_entries[]
+                    | select(.key | test("^[0-9]+\\.[0-9]+$"))
+                    | select(.value.generalAvailabilityDate != null and .value.generalAvailabilityDate <= $today)
+                    | select(.value.deprecationDate > $today)
+                    | .key
+                  ] | sort'
+          )
+          SUPPORTED_COUNT=$(echo "${SUPPORTED_VERSIONS_JSON}" | jq 'length')
+          SUPPORTED_LIST=$(echo "${SUPPORTED_VERSIONS_JSON}"  | jq --raw-output 'join(", ")')
+          echo "Currently supported GHES releases (${SUPPORTED_COUNT}): ${SUPPORTED_LIST}"
+
+          # For each row extract GHES version (col 1) and runner version (col 2).
+          # Sort descending, keep only currently-supported GHES releases, then
+          # re-sort ascending so the oldest supported GHES is first —
+          # its runner version is the floor that all supported instances must meet.
+          FLOOR_VERSION=$(
+            echo "${RUNNER_TABLE}" \
+              | awk -F'|' '{
+                  gsub(/[[:space:]]/, "", $2);   # GHES version
+                  gsub(/[[:space:]]/, "", $3);   # runner version (may have "([release..." suffix)
+                  split($3, parts, "(");          # drop the "([release notes]...)" suffix
+                  print $2 " " parts[1]
+                }' \
+              | sort --version-sort --key=1,1 --reverse \
+              | head --lines="${SUPPORTED_COUNT}" \
+              | sort --version-sort --key=1,1 \
+              | head --lines=1 \
+              | awk '{print $2}'
+          )
+
+          OLDEST_GHES=$(echo "${SUPPORTED_VERSIONS_JSON}" | jq --raw-output '.[0]')
+
+          # Build the formatted GHES → runner min-version table for embedding in
+          # the TOML description. List newest first (descending) to match existing style.
+          VERSION_TABLE=$(
+            echo "${RUNNER_TABLE}" \
+              | awk -F'|' '{
+                  gsub(/[[:space:]]/, "", $2);
+                  gsub(/[[:space:]]/, "", $3);
+                  split($3, parts, "(");
+                  print $2 " " parts[1]
+                }' \
+              | sort --version-sort --key=1,1 --reverse \
+              | head --lines="${SUPPORTED_COUNT}" \
+              | awk -v n="${SUPPORTED_COUNT}" '
+                  NR < n { printf "  GHES %s → %s,\n", $1, $2 }
+                  NR == n { printf "  GHES %s → %s (oldest supported; used as the floor here).", $1, $2 }'
+          )
+
+          echo "floor_version=${FLOOR_VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "oldest_ghes=${OLDEST_GHES}"     >> "${GITHUB_OUTPUT}"
+          {
+            echo "version_table<<GHES_TABLE_EOF"
+            echo "${VERSION_TABLE}"
+            echo "GHES_TABLE_EOF"
+          } >> "${GITHUB_OUTPUT}"
+          echo "Oldest supported GHES release: ${OLDEST_GHES}"
+          echo "GHES floor runner version: ${FLOOR_VERSION}"
+
+      # -----------------------------------------------------------------------
+      # 3. Read current values from the TOML tip files
+      # -----------------------------------------------------------------------
+      - name: Read current tip versions
+        id: current
+        run: |
+          CURRENT_DOTCOM=$(
+            grep 'min_version' tips/runner_version_not_dotcom_latest.toml \
+              | grep --extended-regexp --only-matching '[0-9]+\.[0-9]+\.[0-9]+' \
+              | head --lines=1
+          )
+          CURRENT_GHES_FLOOR=$(
+            grep 'min_version' tips/runner_version_below_ghes_minimum.toml \
+              | grep --extended-regexp --only-matching '[0-9]+\.[0-9]+\.[0-9]+' \
+              | head --lines=1
+          )
+          echo "dotcom=${CURRENT_DOTCOM}" >> "${GITHUB_OUTPUT}"
+          echo "ghes_floor=${CURRENT_GHES_FLOOR}" >> "${GITHUB_OUTPUT}"
+          echo "Current dotcom tip version  : ${CURRENT_DOTCOM}"
+          echo "Current GHES floor version  : ${CURRENT_GHES_FLOOR}"
+
+      # -----------------------------------------------------------------------
+      # 4. Determine whether updates are needed
+      # -----------------------------------------------------------------------
+      - name: Determine if updates are needed
+        id: diff
+        run: |
+          NEED_DOTCOM=false
+          NEED_GHES=false
+          if [ "${{ steps.dotcom.outputs.version }}" != "${{ steps.current.outputs.dotcom }}" ]; then
+            NEED_DOTCOM=true
+          fi
+          if [ "${{ steps.ghes.outputs.floor_version }}" != "${{ steps.current.outputs.ghes_floor }}" ]; then
+            NEED_GHES=true
+          fi
+          echo "need_dotcom=${NEED_DOTCOM}" >> "${GITHUB_OUTPUT}"
+          echo "need_ghes=${NEED_GHES}"     >> "${GITHUB_OUTPUT}"
+          echo "Need dotcom update : ${NEED_DOTCOM}"
+          echo "Need GHES update   : ${NEED_GHES}"
+
+      # -----------------------------------------------------------------------
+      # 5. Apply updates to TOML files
+      # -----------------------------------------------------------------------
+      - name: Update runner_version_not_dotcom_latest.toml
+        if: steps.diff.outputs.need_dotcom == 'true'
+        env:
+          OLD_VER: ${{ steps.current.outputs.dotcom }}
+          NEW_VER: ${{ steps.dotcom.outputs.version }}
+        run: |
+          TODAY_DATE=$(date --utc +%Y-%m-%d)
+
+          # Update min_version field
+          sed --in-place \
+            "s/^min_version = \"${OLD_VER}\"/min_version = \"${NEW_VER}\"/" \
+            tips/runner_version_not_dotcom_latest.toml
+
+          # Update the "Latest as of" line in the description
+          sed --in-place \
+            "s/Latest as of [0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}: ${OLD_VER}/Latest as of ${TODAY_DATE}: ${NEW_VER}/" \
+            tips/runner_version_not_dotcom_latest.toml
+
+          # Update the top-level updated date
+          sed --in-place \
+            "s/^updated = \"[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\"/updated = \"${TODAY_DATE}\"/" \
+            tips/runner_version_not_dotcom_latest.toml
+
+          echo "Updated runner_version_not_dotcom_latest.toml: ${OLD_VER} → ${NEW_VER}"
+
+      - name: Update runner_version_below_ghes_minimum.toml
+        if: steps.diff.outputs.need_ghes == 'true'
+        env:
+          OLD_VER:       ${{ steps.current.outputs.ghes_floor }}
+          NEW_VER:       ${{ steps.ghes.outputs.floor_version }}
+          OLDEST_GHES:   ${{ steps.ghes.outputs.oldest_ghes }}
+          VERSION_TABLE: ${{ steps.ghes.outputs.version_table }}
+        run: |
+          TODAY_DATE=$(date --utc +%Y-%m-%d)
+
+          # Update min_version field
+          sed --in-place \
+            "s/^min_version = \"${OLD_VER}\"/min_version = \"${NEW_VER}\"/" \
+            tips/runner_version_below_ghes_minimum.toml
+
+          # Update the "as of" date in the description block
+          sed --in-place \
+            "s/as of [0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}:/as of ${TODAY_DATE}:/" \
+            tips/runner_version_below_ghes_minimum.toml
+
+          # Replace the multi-line GHES → runner version table in the description.
+          # VERSION_TABLE contains embedded newlines, so write it to a temp file first —
+          # passing multiline content via awk -v or python3 -c arguments is unreliable.
+          # python3 -c (one-liner) avoids the YAML indentation conflict that arises when
+          # a bash heredoc body appears at column 0 inside a YAML literal block scalar.
+          printf '%s' "${VERSION_TABLE}" > /tmp/ghes_vtable.txt
+          python3 -c "import re; t='tips/runner_version_below_ghes_minimum.toml'; v=open('/tmp/ghes_vtable.txt').read(); c=open(t).read(); open(t,'w').write(re.sub(r'(?:  GHES [0-9]+\.[0-9]+ \N{RIGHTWARDS ARROW} [^\n]+\n)*  GHES [0-9]+\.[0-9]+ \N{RIGHTWARDS ARROW} [^\n]*\(oldest supported; used as the floor here\)\.', v, c))"
+
+          # Update the inline comment that names the oldest supported GHES release
+          sed --in-place \
+            "s/oldest currently-supported GHES release ([0-9][0-9]*\.[0-9][0-9]*)/oldest currently-supported GHES release (${OLDEST_GHES})/" \
+            tips/runner_version_below_ghes_minimum.toml
+
+          # Update the top-level updated date
+          sed --in-place \
+            "s/^updated = \"[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\"/updated = \"${TODAY_DATE}\"/" \
+            tips/runner_version_below_ghes_minimum.toml
+
+          echo "Updated runner_version_below_ghes_minimum.toml: ${OLD_VER} → ${NEW_VER}"
+
+      # -----------------------------------------------------------------------
+      # 6. Open a pull request (unless dry-run or nothing changed)
+      # -----------------------------------------------------------------------
+      - name: Open pull request
+        if: |
+          !inputs.dry_run &&
+          (steps.diff.outputs.need_dotcom == 'true' || steps.diff.outputs.need_ghes == 'true')
+        uses: actions/github-script@v8
+        env:
+          DOTCOM_OLD: ${{ steps.current.outputs.dotcom }}
+          DOTCOM_NEW: ${{ steps.dotcom.outputs.version }}
+          GHES_OLD:   ${{ steps.current.outputs.ghes_floor }}
+          GHES_NEW:   ${{ steps.ghes.outputs.floor_version }}
+          NEED_DOTCOM: ${{ steps.diff.outputs.need_dotcom }}
+          NEED_GHES:   ${{ steps.diff.outputs.need_ghes }}
+        with:
+          script: |
+            const { execSync } = require('child_process');
+            const today = new Date().toISOString().slice(0, 10);
+            const branch = `chore/update-runner-versions-${today}`;
+
+            // Configure git identity
+            // 41898282 is the permanent GitHub user ID for github-actions[bot].
+            // Verified via: curl https://api.github.com/users/github-actions%5Bbot%5D | jq .id
+            execSync('git config user.name  "github-actions[bot]"');
+            execSync('git config user.email "41898282+github-actions[bot]@users.noreply.github.com"');
+
+            // Delete any stale chore/update-runner-versions-* branches left over
+            // from prior runs (e.g. incidents, failed pushes, closed-without-merge PRs).
+            const staleBranches = await github.paginate(github.rest.repos.listBranches, {
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              per_page: 100,
+            });
+            for (const b of staleBranches) {
+              if (b.name.startsWith('chore/update-runner-versions-')) {
+                core.info(`Deleting stale branch: ${b.name}`);
+                await github.rest.git.deleteRef({
+                  owner: context.repo.owner,
+                  repo:  context.repo.repo,
+                  ref:   `heads/${b.name}`,
+                });
+              }
+            }
+
+            // Create and push a new branch
+            execSync(`git checkout -b ${branch}`);
+            execSync('git add tips/runner_version_not_dotcom_latest.toml tips/runner_version_below_ghes_minimum.toml');
+            execSync(`git commit --allow-empty -m "chore: update runner tip versions (${today})"`);
+            execSync(`git push origin ${branch}`);
+
+            // Build PR body
+            const lines = ['Automated update of runner version tip files.', ''];
+            if (process.env.NEED_DOTCOM === 'true') {
+              lines.push(`- **runner_version_not_dotcom_latest**: \`${process.env.DOTCOM_OLD}\` → \`${process.env.DOTCOM_NEW}\``);
+            }
+            if (process.env.NEED_GHES === 'true') {
+              lines.push(`- **runner_version_below_ghes_minimum**: \`${process.env.GHES_OLD}\` → \`${process.env.GHES_NEW}\``);
+            }
+            lines.push('', '---', '_Opened automatically by the [update-runner-tip-versions](.github/workflows/update-runner-tip-versions.yml) workflow._');
+
+            const prResponse = await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              title: `chore: update runner tip versions (${today})`,
+              head:  branch,
+              base:  context.payload.repository.default_branch,
+              body:  lines.join('\n'),
+            });
+            core.info(`Pull request opened: ${prResponse.data.html_url}`);
+
+      # -----------------------------------------------------------------------
+      # 7. Dry-run summary (no-op step, just logs)
+      # -----------------------------------------------------------------------
+      - name: Dry run summary
+        if: inputs.dry_run
+        run: |
+          echo "=== DRY RUN — no changes committed or PR opened ==="
+          echo "dotcom tip  : ${{ steps.current.outputs.dotcom }} → ${{ steps.dotcom.outputs.version }} (change needed: ${{ steps.diff.outputs.need_dotcom }})"
+          echo "GHES floor  : ${{ steps.current.outputs.ghes_floor }} → ${{ steps.ghes.outputs.floor_version }} (change needed: ${{ steps.diff.outputs.need_ghes }})"
+
+      # -----------------------------------------------------------------------
+      # 8. No-op when both files are already current
+      # -----------------------------------------------------------------------
+      - name: Already up to date
+        if: steps.diff.outputs.need_dotcom == 'false' && steps.diff.outputs.need_ghes == 'false'
+        run: |
+          echo "Both tip files are already up to date — no PR needed."
+          echo "  dotcom floor : ${{ steps.current.outputs.dotcom }}"
+          echo "  GHES floor   : ${{ steps.current.outputs.ghes_floor }}"
