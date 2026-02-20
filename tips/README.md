@@ -86,10 +86,23 @@ min_version = "2.319.1"
 # max_version = "3.0.0"   # optional upper bound
 
 # --- action_version_check ---
-# Flags when the resolved semver of a specific first-party action (read from the
-# "Version: X.Y.Z" line that follows every "Download immutable action package"
-# header) is below min_version or above max_version.
-# Works for both SHA-pinned and tag-pinned action references.
+# Flags when the resolved version of a specific first-party action is below
+# min_version or above max_version.
+#
+# Supports two runner log formats automatically:
+#
+#   Format 1 — a group header followed by a Version line:
+#     ##[group]Download immutable action package 'owner/repo@<ref>'
+#     Version: X.Y.Z
+#   Version is read directly from the "Version:" line; works for both
+#   SHA-pinned and tag-pinned references.
+#
+#   Format 2 — a single line with the SHA inline,
+#   no subsequent "Version:" line:
+#     Download action repository 'owner/repo@<ref>' (SHA:...)
+#   Version is inferred from the tag in the ref (e.g. "@v4" → 4.0.0).
+#   Bare SHA-only refs without a detectable version tag are skipped.
+#
 # action: the owner/repo identifier of the action (e.g. "actions/checkout").
 # min_version: the minimum acceptable version (inclusive, optional).
 # max_version: the maximum acceptable version (inclusive, optional).

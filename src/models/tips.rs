@@ -165,17 +165,23 @@ pub enum Check {
     },
     /// Flag when the version reported for a specific first-party action is outside bounds.
     ///
-    /// Matches log pairs:
-    ///   `##[group]Download immutable action package 'owner/repo@<ref>'`
-    ///   `Version: X.Y.Z`
-    /// Works for both SHA-pinned (`@abc123`) and tag-pinned (`@v4`) references.
+    /// Matches either:
+    ///   `##[group]Download immutable action package 'owner/repo@<ref>'` + `Version: X.Y.Z`
+    ///   (older runner format, any ref style)
+    /// or:
+    ///   `Download action repository 'owner/repo@<ref>' (SHA:...)`
+    ///   (newer runner format; version extracted from tag reference, e.g. `@v4`)
     ActionVersionCheck {
         /// The `owner/repo` identifier for display in details.
         action: String,
-        /// Pre-compiled regex matching the download header line for this action.
+        /// Pre-compiled regex matching the download header line for this action
+        /// (covers both the older "immutable action package" and newer "action repository" formats).
         action_regex: Regex,
-        /// Pre-compiled regex capturing the semver from the following `Version:` line.
+        /// Pre-compiled regex capturing the semver from the older `Version:` line.
         version_regex: Regex,
+        /// Pre-compiled regex capturing a major-only version from the tag in the header line
+        /// (e.g. `@v4` → `4`). Used as a fallback for newer log formats with no `Version:` line.
+        tag_version_regex: Regex,
         min_version: Option<[u64; 3]>,
         max_version: Option<[u64; 3]>,
     },
@@ -414,11 +420,16 @@ fn load_tip_file(path: &Path) -> anyhow::Result<Tip> {
                 }
                 // Build a regex that matches the download-header line for this action,
                 // regardless of whether the ref is a tag (@v4) or a full/partial SHA.
+                // Covers the older "immutable action package" format and the newer
+                // "action repository" format introduced in 2026.
                 let escaped = regex::escape(&action);
-                let action_regex =
-                    Regex::new(&format!(r"Download immutable action package '{escaped}@"))?;
-                // Matches the "Version: X.Y.Z" line that immediately follows.
+                let action_regex = Regex::new(&format!(
+                    r"(?:Download immutable action package|Download action repository) '{escaped}@"
+                ))?;
+                // Matches the "Version: X.Y.Z" line that immediately follows (older format).
                 let version_regex = Regex::new(r"^Version: (\d+\.\d+\.\d+)$")?;
+                // Fallback for newer format: extract major version from a tag ref like `@v4`.
+                let tag_version_regex = Regex::new(r"@v(\d+)")?;
                 let min_version = raw
                     .check
                     .min_version
@@ -442,6 +453,7 @@ fn load_tip_file(path: &Path) -> anyhow::Result<Tip> {
                     action,
                     action_regex,
                     version_regex,
+                    tag_version_regex,
                     min_version,
                     max_version,
                 }
@@ -864,6 +876,7 @@ fn evaluate_tip(tip: &Tip, entries: &[LogEntry]) -> TipResult {
             action,
             action_regex,
             version_regex,
+            tag_version_regex,
             min_version,
             max_version,
         } => eval_action_version_check(
@@ -872,6 +885,7 @@ fn evaluate_tip(tip: &Tip, entries: &[LogEntry]) -> TipResult {
             action,
             action_regex,
             version_regex,
+            tag_version_regex,
             *min_version,
             *max_version,
         ),
@@ -1282,19 +1296,24 @@ fn eval_version_check(
 
 /// Evaluate an `action_version_check` tip.
 ///
-/// For every log pair:
-///   `##[group]Download immutable action package 'owner/repo@<ref>'`  (any ref format)
-///   `Version: X.Y.Z`
-/// check if the resolved semver falls outside `[min_version, max_version]`.
+/// Handles two runner log formats:
 ///
-/// Both SHA-pinned (`@de0fac2…`) and tag-pinned (`@v4`) refs are handled
-/// because the version is read from the `Version:` line, not the ref itself.
+/// **Older format** — a group header followed by a `Version:` line:
+///   `##[group]Download immutable action package 'owner/repo@<ref>'`
+///   `Version: X.Y.Z`
+///
+/// **Newer format** (introduced ~2026) — a single plain line with the SHA inline,
+/// no subsequent `Version:` line:
+///   `Download action repository 'owner/repo@<ref>' (SHA:...)`
+///   Version is inferred from the tag portion of `<ref>` (e.g. `v4` → `4.0.0`).
+///   SHA-only refs without a detectable version tag are skipped.
 fn eval_action_version_check(
     tip: &Tip,
     entries: &[LogEntry],
     action: &str,
     action_regex: &Regex,
     version_regex: &Regex,
+    tag_version_regex: &Regex,
     min_version: Option<[u64; 3]>,
     max_version: Option<[u64; 3]>,
 ) -> TipResult {
@@ -1317,7 +1336,31 @@ fn eval_action_version_check(
             .find(|e| version_regex.is_match(&e.message));
 
         let Some(ver_entry) = version_entry else {
-            continue; // No version line nearby — skip silently.
+            // Newer runner format has no separate Version line; fall back to the
+            // major version encoded in the tag reference (e.g. `@v4` → 4.0.0).
+            if let Some(caps) = tag_version_regex.captures(&entry.message) {
+                if let Some(major_str) = caps.get(1) {
+                    if let Ok(major) = major_str.as_str().parse::<u64>() {
+                        let found = [major, 0, 0];
+                        let below_min = min_version.is_some_and(|min| found < min);
+                        let above_max = max_version.is_some_and(|max| found > max);
+                        if below_min || above_max {
+                            marked_lines.push(entry.line_number);
+                            if first_detail.is_empty() {
+                                let found_str = format_version(found);
+                                first_detail = if below_min {
+                                    let min_str = format_version(min_version.unwrap());
+                                    format!("{action} version {found_str} is below minimum {min_str}")
+                                } else {
+                                    let max_str = format_version(max_version.unwrap());
+                                    format!("{action} version {found_str} is above maximum {max_str}")
+                                };
+                            }
+                        }
+                    }
+                }
+            }
+            continue;
         };
 
         let Some(caps) = version_regex.captures(&ver_entry.message) else {
@@ -1880,14 +1923,65 @@ pattern = "error"
             check: Check::ActionVersionCheck {
                 action: action.to_string(),
                 action_regex: Regex::new(&format!(
-                    r"Download immutable action package '{escaped}@"
+                    r"(?:Download immutable action package|Download action repository) '{escaped}@"
                 ))
                 .unwrap(),
                 version_regex: Regex::new(r"^Version: (\d+\.\d+\.\d+)$").unwrap(),
+                tag_version_regex: Regex::new(r"@v(\d+)").unwrap(),
                 min_version: Some(parse_version_triple(min_version).unwrap()),
                 max_version: None,
             },
         }
+    }
+
+    /// Build a single-line workflow log simulating the newer runner format
+    /// (no separate `Version:` line; SHA is inline).
+    fn action_log_new_format(
+        action: &str,
+        reference: &str,
+        sha: &str,
+    ) -> Vec<log_parser::LogEntry> {
+        let raw = format!(
+            "2026-02-14T06:20:59Z Download action repository '{action}@{reference}' (SHA:{sha})\n"
+        );
+        log_parser::parse_workflow_log(&raw)
+    }
+
+    #[test]
+    fn test_action_version_check_triggered_new_runner_format_tag_ref() {
+        // New format: `@v4` ref — major version 4 is below the floor of 6.0.0.
+        let sha = "34e114876b0b11c390a56381ad16ebd13914f8d5";
+        let entries = action_log_new_format("actions/checkout", "v4", sha);
+        let tip = action_version_check_tip("actions/checkout", "6.0.0");
+        let results = evaluate_tips_for_log(&[tip], &entries, LogKind::Workflow);
+        assert_eq!(results.len(), 1);
+        let r = &results[0];
+        assert!(r.triggered, "expected tip to trigger on new runner format");
+        assert!(r.detail.contains("4.0.0"), "detail: {}", r.detail);
+        assert!(r.detail.contains("6.0.0"), "detail: {}", r.detail);
+        assert_eq!(r.marked_lines.len(), 1);
+    }
+
+    #[test]
+    fn test_action_version_check_not_triggered_new_runner_format_current() {
+        // New format: `@v6` ref — major version 6 meets the floor of 6.0.0.
+        let sha = "aaaaabbbbbcccccdddddaaaaabbbbbcccccddddd";
+        let entries = action_log_new_format("actions/checkout", "v6", sha);
+        let tip = action_version_check_tip("actions/checkout", "6.0.0");
+        let results = evaluate_tips_for_log(&[tip], &entries, LogKind::Workflow);
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].triggered, "v6 should not trigger on 6.0.0 floor");
+    }
+
+    #[test]
+    fn test_action_version_check_new_runner_format_sha_only_skipped() {
+        // New format with a bare SHA ref — no version can be inferred; tip should not trigger.
+        let sha = "34e114876b0b11c390a56381ad16ebd13914f8d5";
+        let entries = action_log_new_format("actions/checkout", sha, sha);
+        let tip = action_version_check_tip("actions/checkout", "6.0.0");
+        let results = evaluate_tips_for_log(&[tip], &entries, LogKind::Workflow);
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].triggered, "bare SHA ref should not trigger (version unknown)");
     }
 
     #[test]
