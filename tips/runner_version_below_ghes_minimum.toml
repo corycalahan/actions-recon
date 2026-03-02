@@ -4,7 +4,7 @@ name  = "Runner Below GHES Minimum Version"
 emoji = "🔄"
 docs  = "https://docs.github.com/en/enterprise-server/admin/all-releases#minimum-github-actions-runner-application-versions"
 created = "2026-02-18"
-updated = "2026-02-18"
+updated = "2026-03-02"
 
 description = """
 The runner version is below the minimum required for the oldest supported GitHub
@@ -15,12 +15,12 @@ Warning: Self-hosted runners that are not updated to a new release
 will stop receiving queued jobs from GitHub Actions.
 
 Minimum required versions by GHES release (as of 2026-02-18):
+  GHES 3.20 → 2.330.0,
   GHES 3.19 → 2.328.0,
   GHES 3.18 → 2.324.0,
   GHES 3.17 → 2.322.0,
   GHES 3.16 → 2.321.0,
-  GHES 3.15 → 2.319.1,
-  GHES 3.14 → 2.317.0 (oldest supported; used as the floor here).
+  GHES 3.15 → 2.319.1 (oldest supported; used as the floor here).
 
 Update the runner application on your self-hosted machine, or enable automatic
 updates. See the docs link for the full table.
@@ -35,4 +35,4 @@ pattern = "Current runner version: '(\\d+\\.\\d+\\.\\d+)'"
 # Floor = minimum required for the oldest currently-supported GHES release (3.14).
 # Update this value when GHES releases are added or retired.
 # Ref: https://docs.github.com/en/enterprise-server/admin/all-releases#minimum-github-actions-runner-application-versions
-min_version = "2.317.0"
+min_version = "2.319.1"
