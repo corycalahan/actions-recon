@@ -119,23 +119,31 @@ jobs:
           print("=== Fetching latest release tags ===")
           for repo in unique_repos:
               try:
-                  data = gh_api(f"repos/{repo}/releases/latest")
-                  tag = data["tag_name"]
-                  # Some repos (e.g. github/codeql-action) publish non-version
-                  # tags (like "codeql-bundle-v*") as their "latest" release.
-                  # If the tag doesn't look like vN[.x.y], scan the 30 most
-                  # recent releases and pick the first one that does.
-                  if not re.match(r'^v\d', tag):
-                      releases = gh_api(f"repos/{repo}/releases?per_page=30")
-                      resolved = next(
-                          (r["tag_name"] for r in releases if re.match(r'^v\d', r["tag_name"])),
-                          tag,  # fall back to the original if none found
-                      )
-                      print(f"  (non-version latest tag {tag!r}; resolved to {resolved!r})")
-                      tag = resolved
+                  # Always scan recent releases and pick the highest
+                  # v-prefixed, non-prerelease tag.  This avoids two
+                  # classes of bugs:
+                  #   • releases/latest may point to a non-version tag
+                  #     (e.g. codeql-bundle-v*).
+                  #   • repos that backport fixes to older major lines
+                  #     can publish e.g. v3.32.6 *after* v4.32.4,
+                  #     making it the "latest" release chronologically
+                  #     even though v4 is the higher major version.
+                  releases = gh_api(f"repos/{repo}/releases?per_page=30")
+                  v_tags = [
+                      r["tag_name"] for r in releases
+                      if re.match(r'^v\d', r["tag_name"]) and not r.get("prerelease")
+                  ]
+                  if v_tags:
+                      tag = max(v_tags, key=parse_ver)
+                  else:
+                      # No v-prefixed releases found; try releases/latest
+                      # as a last resort.
+                      data = gh_api(f"repos/{repo}/releases/latest")
+                      tag = data["tag_name"]
+                      print(f"  (no v-prefixed releases; falling back to latest: {tag!r})")
               except HTTPError as exc:
                   # Archived or unusual repos may return 404; skip gracefully.
-                  print(f"WARNING: could not fetch latest release for {repo}: {exc}")
+                  print(f"WARNING: could not fetch releases for {repo}: {exc}")
                   tag = None
               repo_latest_tag[repo] = tag
               print(f"  {repo}: {tag}")
@@ -173,6 +181,13 @@ jobs:
               # ---- read current "Latest as of" version ----
               m2 = re.search(r'Latest as of \d{4}-\d{2}-\d{2}: v([\d.]+)', content)
               cur_latest_str   = m2.group(1) if m2 else None        # "6.0.2" or None
+
+              # Guard against version downgrades — if the fetched version
+              # is older than what is already recorded, skip the file.
+              if cur_latest_str and latest_ver <= parse_ver(f"v{cur_latest_str}"):
+                  print(f"  OK (no upgrade): {tip_file}  (API={latest_str}, current={cur_latest_str})")
+                  continue
+
               latest_changed   = (cur_latest_str != latest_str)
 
               if not major_bump and not latest_changed:
@@ -300,6 +315,7 @@ jobs:
 
             // Configure git identity
             // 41898282 is the permanent GitHub user ID for github-actions[bot].
+            // Verified via: curl https://api.github.com/users/github-actions%5Bbot%5D | jq .id
             execSync('git config user.name  "github-actions[bot]"');
             execSync('git config user.email "41898282+github-actions[bot]@users.noreply.github.com"');
 

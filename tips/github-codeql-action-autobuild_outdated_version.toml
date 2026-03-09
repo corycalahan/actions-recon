@@ -30,7 +30,7 @@ See the releases page for the full changelog:
   https://github.com/github/codeql-action/releases
 
 Update the min_version field in this tip file when a new major version ships:
-  Latest as of 2026-03-09: v3.32.6
+  Latest as of 2026-03-09: v4.32.6
 """
 
 [check]
