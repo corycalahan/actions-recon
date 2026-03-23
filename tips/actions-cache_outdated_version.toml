@@ -4,7 +4,7 @@ name  = "Newer version of actions/cache available"
 emoji = "⬆️"
 docs  = "https://github.com/actions/cache/releases"
 created = "2026-02-18"
-updated = "2026-02-18"
+updated = "2026-03-23"
 
 description = """
 The workflow is using an outdated version of actions/cache.
@@ -24,7 +24,7 @@ See the releases page for the full changelog:
   https://github.com/actions/cache/releases
 
 Update the min_version field in this tip file when a new major version ships:
-  Latest as of 2026-02-18: v5.0.3
+  Latest as of 2026-03-23: v5.0.4
 """
 
 [check]
