@@ -98,20 +98,34 @@ jobs:
           SUPPORTED_LIST=$(echo "${SUPPORTED_VERSIONS_JSON}"  | jq --raw-output 'join(", ")')
           echo "Currently supported GHES releases (${SUPPORTED_COUNT}): ${SUPPORTED_LIST}"
 
-          # For each row extract GHES version (col 1) and runner version (col 2).
-          # Sort descending, keep only currently-supported GHES releases, then
-          # re-sort ascending so the oldest supported GHES is first —
-          # its runner version is the floor that all supported instances must meet.
-          FLOOR_VERSION=$(
+          # Parse all runner table rows into "ghes_version runner_version" pairs.
+          PARSED_ROWS=$(
             echo "${RUNNER_TABLE}" \
               | awk -F'|' '{
                   gsub(/[[:space:]]/, "", $2);   # GHES version
                   gsub(/[[:space:]]/, "", $3);   # runner version (may have "([release..." suffix)
                   split($3, parts, "(");          # drop the "([release notes]...)" suffix
                   print $2 " " parts[1]
-                }' \
-              | sort --version-sort --key=1,1 --reverse \
-              | head --lines="${SUPPORTED_COUNT}" \
+                }'
+          )
+
+          # Filter to only rows whose GHES version is actually in the supported set.
+          # This avoids pulling in deprecated GHES releases when the docs table and
+          # enterprise-dates.json are temporarily out of sync.
+          SUPPORTED_ROWS=$(
+            echo "${PARSED_ROWS}" \
+              | while IFS=' ' read -r ghes_ver runner_ver; do
+                  if echo "${SUPPORTED_VERSIONS_JSON}" \
+                       | jq -e --arg v "${ghes_ver}" 'index($v) != null' > /dev/null 2>&1; then
+                    echo "${ghes_ver} ${runner_ver}"
+                  fi
+                done
+          )
+
+          # Sort ascending so the oldest supported GHES release is first —
+          # its runner version is the floor that all supported instances must meet.
+          FLOOR_VERSION=$(
+            echo "${SUPPORTED_ROWS}" \
               | sort --version-sort --key=1,1 \
               | head --lines=1 \
               | awk '{print $2}'
@@ -121,17 +135,11 @@ jobs:
 
           # Build the formatted GHES → runner min-version table for embedding in
           # the TOML description. List newest first (descending) to match existing style.
+          SUPPORTED_ROW_COUNT=$(echo "${SUPPORTED_ROWS}" | grep --count .)
           VERSION_TABLE=$(
-            echo "${RUNNER_TABLE}" \
-              | awk -F'|' '{
-                  gsub(/[[:space:]]/, "", $2);
-                  gsub(/[[:space:]]/, "", $3);
-                  split($3, parts, "(");
-                  print $2 " " parts[1]
-                }' \
+            echo "${SUPPORTED_ROWS}" \
               | sort --version-sort --key=1,1 --reverse \
-              | head --lines="${SUPPORTED_COUNT}" \
-              | awk -v n="${SUPPORTED_COUNT}" '
+              | awk -v n="${SUPPORTED_ROW_COUNT}" '
                   NR < n { printf "  GHES %s → %s,\n", $1, $2 }
                   NR == n { printf "  GHES %s → %s (oldest supported; used as the floor here).", $1, $2 }'
           )
