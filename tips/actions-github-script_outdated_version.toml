@@ -4,11 +4,11 @@ name  = "Newer version of actions/github-script available"
 emoji = "⬆️"
 docs  = "https://github.com/actions/github-script/releases"
 created = "2026-02-19"
-updated = "2026-02-19"
+updated = "2026-04-13"
 
 description = """
 The workflow is using an outdated version of actions/github-script.
-The latest major version available is v8.
+The latest major version available is v9.
 
 Note: The latest version shown here applies to GitHub.com (dotcom).
 GitHub Enterprise Server (GHES) bundles its own set of action versions —
@@ -21,13 +21,13 @@ Older major versions may be missing bug fixes, security patches, or
 support for newer runner features (e.g. Node.js 24 runtime).
 
 Consider updating your workflow YAML:
-  uses: actions/github-script@v8
+  uses: actions/github-script@v9
 
 See the releases page for the full changelog:
   https://github.com/actions/github-script/releases
 
 Update the min_version field in this tip file when a new major version ships:
-  Latest as of 2026-02-19: v8.0.0
+  Latest as of 2026-04-13: v9.0.0
 """
 
 [check]
@@ -37,4 +37,4 @@ scope = "workflow"
 # header, so it works for both tag-pinned and SHA-pinned references.
 # Update min_version when the minimum major version advances.
 action      = "actions/github-script"
-min_version = "8.0.0"
+min_version = "9.0.0"

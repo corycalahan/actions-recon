@@ -4,7 +4,7 @@ name  = "Newer version of actions/upload-artifact available"
 emoji = "⬆️"
 docs  = "https://github.com/actions/upload-artifact/releases"
 created = "2026-02-18"
-updated = "2026-03-02"
+updated = "2026-04-13"
 
 description = """
 The workflow is using an outdated version of actions/upload-artifact.
@@ -25,7 +25,7 @@ See the releases page for the full changelog:
   https://github.com/actions/upload-artifact/releases
 
 Update the min_version field in this tip file when a new major version ships:
-  Latest as of 2026-03-02: v7.0.0
+  Latest as of 2026-04-13: v7.0.1
 """
 
 [check]
