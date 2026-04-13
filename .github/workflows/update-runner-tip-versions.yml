@@ -286,7 +286,7 @@ jobs:
         if: |
           !inputs.dry_run &&
           (steps.diff.outputs.need_dotcom == 'true' || steps.diff.outputs.need_ghes == 'true')
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         env:
           DOTCOM_OLD: ${{ steps.current.outputs.dotcom }}
           DOTCOM_NEW: ${{ steps.dotcom.outputs.version }}
