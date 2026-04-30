@@ -1,0 +1,383 @@
+{% extends "base.html" %}
+
+{% block title %}Compare: {{ a_id }}.zip vs {{ b_id }}.zip — actions-recon{% endblock %}
+
+{% block content %}
+<section class="compare-result-header">
+    <h1>Compare</h1>
+    <div class="compare-pair">
+        <div class="compare-pair-side">
+            <span class="compare-pair-label">A:</span>
+            <a href="/analysis/{{ a_id }}" class="compare-pair-name">{{ a_id }}.zip</a>
+        </div>
+        <span class="compare-pair-vs">vs.</span>
+        <div class="compare-pair-side">
+            <span class="compare-pair-label">B:</span>
+            <a href="/analysis/{{ b_id }}" class="compare-pair-name">{{ b_id }}.zip</a>
+        </div>
+    </div>
+    <div class="compare-actions">
+        <form method="get" action="/compare/{{ a_id }}/{{ b_id }}" class="compare-fuzzy-form">
+            <label class="compare-fuzzy">
+                <input type="checkbox" name="fuzzy" value="1"
+                    {% if fuzzy %}checked{% endif %}
+                    onchange="this.form.submit()">
+                Fuzzy step matching
+                <span class="tooltip">
+                    <span class="tooltip-icon">ⓘ</span>
+                    <span class="tooltip-text">Pairs steps across reruns whose normalized names match (digit prefix and .txt stripped, lowercased), even when their leading numbers differ. Useful when steps were reordered.</span>
+                </span>
+            </label>
+            <small class="compare-fuzzy-note">Toggling reloads the comparison.</small>
+            <noscript><button type="submit">Apply</button></noscript>
+        </form>
+        <a href="/compare" class="btn-back">&larr; Back to Compare</a>
+    </div>
+</section>
+
+<section class="compare-section">
+    <h2>Runner type</h2>
+    <p class="hint">
+        Classifies each side as GitHub-hosted, self-hosted, or unknown. GitHub-hosted is
+        detected by a <code>Hosted Compute Agent</code> line inside the
+        <code>Runner Image Provisioner</code> group; self-hosted is detected by the
+        <code>Runner name:</code> and <code>Machine name:</code> fields. If neither marker
+        is present the runner is reported as <code>Unknown</code> &mdash; open the
+        side's <code>.zip</code> link above to browse its log files and inspect the header lines directly.
+    </p>
+    <div class="compare-table-wrap">
+    <table class="compare-table {% if runner_type_differs %}row-differs{% endif %}">
+        <thead>
+            <tr>
+                <th>Side A</th>
+                <th>Side B</th>
+                <th class="col-status">Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>{{ runner_type_a }}</td>
+                <td>{{ runner_type_b }}</td>
+                <td class="col-status">
+                    {% if runner_type_differs %}<span class="badge badge-diff">Differs</span>{% else %}<span class="badge badge-same">Same</span>{% endif %}
+                </td>
+            </tr>
+        </tbody>
+    </table>
+    </div>
+</section>
+
+<section class="compare-section">
+    <h2>Runner identity</h2>
+    <p class="hint">
+        Fields reported by every runner. Use these to confirm the same runner version was active
+        on both sides and that the job targeted the expected runner labels.
+    </p>
+    <div class="compare-table-wrap">
+    <table class="compare-table">
+        <thead>
+            <tr>
+                <th>Field</th>
+                <th>Side A</th>
+                <th>Side B</th>
+                <th class="col-status">Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr class="{% if runner_version_differs %}row-differs{% endif %}">
+                <td>Runner version</td>
+                <td><code>{{ runner_version_a }}</code></td>
+                <td><code>{{ runner_version_b }}</code></td>
+                <td class="col-status">
+                    {% if runner_version_differs %}<span class="badge badge-diff">Differs</span>{% else %}<span class="badge badge-same">Same</span>{% endif %}
+                </td>
+            </tr>
+            <tr class="{% if requested_labels_differs %}row-differs{% endif %}">
+                <td>Requested labels</td>
+                <td><code>{{ requested_labels_a }}</code></td>
+                <td><code>{{ requested_labels_b }}</code></td>
+                <td class="col-status">
+                    {% if requested_labels_differs %}<span class="badge badge-diff">Differs</span>{% else %}<span class="badge badge-same">Same</span>{% endif %}
+                </td>
+            </tr>
+        </tbody>
+    </table>
+    </div>
+</section>
+
+{% if self_hosted_present %}
+<section class="compare-section">
+    <h2>Self-hosted identity</h2>
+    <p class="hint">
+        Identifying details for self-hosted runners. A repeated <code>Runner name</code> on both
+        sides means the same runner instance picked up each job &mdash; useful when troubleshooting
+        environment-specific issues.
+    </p>
+    <div class="compare-table-wrap">
+    <table class="compare-table {% if self_hosted_identity_differs %}row-differs{% endif %}">
+        <thead>
+            <tr>
+                <th>Field</th>
+                <th>Side A</th>
+                <th>Side B</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Runner name</td>
+                <td><code>{{ self_hosted_runner_name_a }}</code></td>
+                <td><code>{{ self_hosted_runner_name_b }}</code></td>
+            </tr>
+            <tr>
+                <td>Runner group</td>
+                <td><code>{{ self_hosted_runner_group_a }}</code></td>
+                <td><code>{{ self_hosted_runner_group_b }}</code></td>
+            </tr>
+            <tr>
+                <td>Machine name</td>
+                <td><code>{{ self_hosted_machine_name_a }}</code></td>
+                <td><code>{{ self_hosted_machine_name_b }}</code></td>
+            </tr>
+        </tbody>
+    </table>
+    </div>
+</section>
+{% endif %}
+
+{% if runner_image_present %}
+<section class="compare-section">
+    <h2>Runner image</h2>
+    <p class="hint">
+        The OS image GitHub-hosted runners executed the job on. Drift between reruns on rolling
+        labels such as <code>ubuntu-latest</code>, <code>windows-latest</code>, or
+        <code>macos-latest</code> shows up here. Self-hosted runners do not report an image.
+    </p>
+    <div class="compare-table-wrap">
+    <table class="compare-table {% if runner_image_differs %}row-differs{% endif %}">
+        <thead>
+            <tr>
+                <th>Field</th>
+                <th>Side A</th>
+                <th>Side B</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Image</td>
+                <td>{% if runner_image_a_reported %}{{ runner_image_a_image }}{% else %}<span class="muted-note">Not reported (self-hosted)</span>{% endif %}</td>
+                <td>{% if runner_image_b_reported %}{{ runner_image_b_image }}{% else %}<span class="muted-note">Not reported (self-hosted)</span>{% endif %}</td>
+            </tr>
+            <tr>
+                <td>Version</td>
+                <td>{% if runner_image_a_reported %}{{ runner_image_a_version }}{% else %}—{% endif %}</td>
+                <td>{% if runner_image_b_reported %}{{ runner_image_b_version }}{% else %}—{% endif %}</td>
+            </tr>
+        </tbody>
+    </table>
+    </div>
+</section>
+{% endif %}
+
+{% if azure_region_present %}
+<section class="compare-section">
+    <h2>Azure region</h2>
+    <p class="hint">
+        GitHub-hosted runners are provisioned across multiple Azure regions. A region difference
+        between reruns can correlate with regional capacity, networking, or service-health issues,
+        and helps spot when multiple jobs share a common region.
+    </p>
+    <div class="compare-table-wrap">
+    <table class="compare-table {% if azure_region_differs %}row-differs{% endif %}">
+        <thead>
+            <tr>
+                <th>Side A</th>
+                <th>Side B</th>
+                <th class="col-status">Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><code>{{ azure_region_a }}</code></td>
+                <td><code>{{ azure_region_b }}</code></td>
+                <td class="col-status">
+                    {% if azure_region_differs %}<span class="badge badge-diff">Differs</span>{% else %}<span class="badge badge-same">Same</span>{% endif %}
+                </td>
+            </tr>
+        </tbody>
+    </table>
+    </div>
+</section>
+{% endif %}
+
+<section class="compare-section">
+    <h2>Diagnostic logs</h2>
+    <p class="hint">
+        Whether the archive includes <code>runner-diagnostic-logs/</code>. The runner uploads
+        these when runner-level debug logging is enabled via <code>ACTIONS_RUNNER_DEBUG=true</code>.
+    </p>
+    <div class="compare-table-wrap">
+    <table class="compare-table {% if diagnostic_logs_differs %}row-differs{% endif %}">
+        <thead>
+            <tr>
+                <th>Side A</th>
+                <th>Side B</th>
+                <th class="col-status">Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>{% if diagnostic_logs_a %}Enabled{% else %}Not present{% endif %}</td>
+                <td>{% if diagnostic_logs_b %}Enabled{% else %}Not present{% endif %}</td>
+                <td class="col-status">
+                    {% if diagnostic_logs_differs %}<span class="badge badge-diff">Differs</span>{% else %}<span class="badge badge-same">Same</span>{% endif %}
+                </td>
+            </tr>
+        </tbody>
+    </table>
+    </div>
+</section>
+
+<section class="compare-section">
+    <h2>Action &amp; reusable workflow versions</h2>
+    <p class="hint">
+        GitHub Actions and reusable workflows used by each run. Each entry shows the
+        <code>owner/repo</code> (with an optional sub-path) and the tag, branch, or commit SHA
+        it was pinned to.
+    </p>
+    {% if action_pairs.is_empty() && action_only_in_a.is_empty() && action_only_in_b.is_empty() %}
+    <p class="hint">No action or reusable workflow references detected in either archive.</p>
+    {% else %}
+    {% if !action_pairs.is_empty() %}
+    <h3>Paired</h3>
+    <div class="compare-table-wrap">
+    <table class="compare-table">
+        <thead>
+            <tr>
+                <th>Reference</th>
+                <th>Link</th>
+                <th>Side A</th>
+                <th>Side B</th>
+                <th class="col-status">Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in action_pairs %}
+            <tr class="{% if row.differs %}row-differs{% endif %}">
+                <td><code>{{ row.owner_repo_path }}</code></td>
+                <td><a href="{{ row.github_url }}" target="_blank" rel="noopener" class="action-link-icon" title="Open repository">🔗</a></td>
+                <td><code>{{ row.a_reference }}</code></td>
+                <td><code>{{ row.b_reference }}</code></td>
+                <td class="col-status">
+                    {% if row.differs %}<span class="badge badge-diff">Changed</span>{% else %}<span class="badge badge-same">Same</span>{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% endif %}
+
+    {% if !action_only_in_a.is_empty() %}
+    <h3>Only in A</h3>
+    <div class="compare-table-wrap">
+    <table class="compare-table">
+        <thead>
+            <tr><th>Reference</th><th>Link</th><th>Version/Ref</th></tr>
+        </thead>
+        <tbody>
+            {% for row in action_only_in_a %}
+            <tr><td><code>{{ row.owner_repo_path }}</code></td><td><a href="{{ row.github_url }}" target="_blank" rel="noopener" class="action-link-icon" title="Open repository">🔗</a></td><td><code>{{ row.reference }}</code></td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% endif %}
+
+    {% if !action_only_in_b.is_empty() %}
+    <h3>Only in B</h3>
+    <div class="compare-table-wrap">
+    <table class="compare-table">
+        <thead>
+            <tr><th>Reference</th><th>Link</th><th>Version/Ref</th></tr>
+        </thead>
+        <tbody>
+            {% for row in action_only_in_b %}
+            <tr><td><code>{{ row.owner_repo_path }}</code></td><td><a href="{{ row.github_url }}" target="_blank" rel="noopener" class="action-link-icon" title="Open repository">🔗</a></td><td><code>{{ row.reference }}</code></td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% endif %}
+    {% endif %}
+</section>
+
+<section class="compare-section">
+    <h2>Step durations</h2>
+    <p class="hint">
+        How long each step took, measured from the first to the last timestamp in its log.
+        Δ is B minus A &mdash; a positive value means side B took longer than side A; a
+        negative value means side B was faster than side A; zero means the two durations matched.
+    </p>
+    {% if step_groups.is_empty() && steps_only_in_a.is_empty() && steps_only_in_b.is_empty() %}
+    <p class="hint">No step logs found in either archive.</p>
+    {% else %}
+    {% for group in step_groups %}
+    <h3>{{ group.job_folder }}</h3>
+    <div class="compare-table-wrap">
+    <table class="compare-table">
+        <thead>
+            <tr>
+                <th>Step</th>
+                <th>Duration A</th>
+                <th>Duration B</th>
+                <th>Δ</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in group.steps %}
+            <tr>
+                <td>{{ s.label }}</td>
+                <td>{{ s.a_duration_display }}</td>
+                <td>{{ s.b_duration_display }}</td>
+                <td class="{{ s.delta_class }}">{{ s.delta_display }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% endfor %}
+
+    {% if !steps_only_in_a.is_empty() %}
+    <h3>Only in A</h3>
+    <div class="compare-table-wrap">
+    <table class="compare-table">
+        <thead>
+            <tr><th>Job folder</th><th>Step file</th><th>Duration</th></tr>
+        </thead>
+        <tbody>
+            {% for row in steps_only_in_a %}
+            <tr><td>{{ row.job_folder }}</td><td>{{ row.step_file }}</td><td>{{ row.duration_display }}</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% endif %}
+
+    {% if !steps_only_in_b.is_empty() %}
+    <h3>Only in B</h3>
+    <div class="compare-table-wrap">
+    <table class="compare-table">
+        <thead>
+            <tr><th>Job folder</th><th>Step file</th><th>Duration</th></tr>
+        </thead>
+        <tbody>
+            {% for row in steps_only_in_b %}
+            <tr><td>{{ row.job_folder }}</td><td>{{ row.step_file }}</td><td>{{ row.duration_display }}</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% endif %}
+    {% endif %}
+</section>
+{% endblock %}

@@ -58,6 +58,18 @@ async fn main() -> anyhow::Result<()> {
             "/analysis/{id}/{*logfile}",
             axum::routing::get(routes::analysis::logfile),
         )
+        .route(
+            "/compare",
+            axum::routing::get(routes::compare::compare_form),
+        )
+        .route(
+            "/compare/upload",
+            axum::routing::post(routes::compare::compare_upload),
+        )
+        .route(
+            "/compare/{a_id}/{b_id}",
+            axum::routing::get(routes::compare::compare_view),
+        )
         .nest_service("/static", ServeDir::new("static"))
         .with_state(shared_config);
 

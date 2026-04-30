@@ -68,7 +68,8 @@ CLI flags (e.g. `--port`) take precedence over environment variables.
 3. **Timeline** — Each log file is rendered as a timeline table with line numbers, timestamps, log levels, and messages. A referenced actions summary table appears when action refs are detected (owner/repo, optional path, and version/ref). Toggle debug lines and group markers on/off. Click **epoch** next to any timestamp to copy the Unix epoch (ms) to clipboard. Click the **#** column header to reverse row order (ascending/descending).
 4. **Tips** — If any troubleshooting tips match the log, a collapsible "tips detected" banner appears above the timeline. Matched lines are marked with emoji indicators in the 💡 column. Toggle individual tips on/off via checkboxes; tips without matched lines are marked as banner-only and still toggle their banner state.
 5. **Clean up** — Use the **Delete All Extracted Files** button on the home page to remove all locally stored data. The current storage path is displayed above the button.
-6. **Light/Dark modes** — Toggle light/dark mode with the button in the header. Your preference is saved in `localStorage`.
+6. **Compare** — Use the **Compare two analyses** link on the home page (or visit `/compare` directly) to diff two extracted archives side by side. Pick two existing analyses from dropdowns, upload a fresh pair of ZIPs, or mix the two in one form. The report covers runner type, runner version, requested labels, self-hosted identity (runner name/group/machine), runner image (hosted), Azure region (hosted), diagnostic-logs-enabled, action and reusable-workflow references, and per-step durations. Enable **Fuzzy step matching** to pair steps across reruns whose normalized names match even when their leading numbers differ.
+7. **Light/Dark modes** — Toggle light/dark mode with the button in the header. Your preference is saved in `localStorage`.
 
 The analysis ID in the URL is always the ZIP filename (e.g. uploading `1234567890.zip` → `/analysis/1234567890`).
 
@@ -98,17 +99,22 @@ src/
     mod.rs           # Model module declarations
     log_parser.rs    # Parse workflow logs and runner diagnostic logs
     tips.rs          # TOML-based troubleshooting tips loader & evaluator
+    compare.rs       # Summarize one extracted archive (runner, image, region, actions, step durations)
+    diff.rs          # Pair two ArchiveSummary values into a ComparisonReport
   routes/
     mod.rs           # Route module declarations
     home.rs          # GET / — home page; POST /delete-all — clear files
     upload.rs        # POST /upload — ZIP upload + extraction
     analysis.rs      # GET /analysis/:id — overview; GET /analysis/:id/*logfile — timeline
+    compare.rs       # GET /compare — form; POST /compare/upload — pair upload; GET /compare/:a/:b — diff view
     settings.rs      # GET /settings — tip admin; POST /settings/tips — save tip; POST /settings/tips/delete — delete tip
 templates/
   base.html          # Shared HTML layout
   home.html          # Home page template
   analysis.html      # Analysis overview (file groups, tooltips)
   logfile.html       # Log file timeline table
+  compare.html       # Compare form (pick two analyses or upload a pair)
+  compare_result.html # Compare result (side-by-side diff)
   error.html         # Error page template
 static/
   style.css          # Stylesheet
@@ -148,6 +154,9 @@ Example tip files: `error_lines.toml`, `job_timeout_risk.toml`, `large_time_gap.
 | GET    | `/analysis/:id`             | Analysis overview — grouped file listing   |
 | GET    | `/analysis/:id/*logfile`    | Timeline view of a specific log file       |
 | POST   | `/delete-all`               | Delete all extracted files, redirect to `/`|
+| GET    | `/compare`                  | Compare form — pick two analyses or upload a pair |
+| POST   | `/compare/upload`           | Resolve/upload the pair, redirect to compare view |
+| GET    | `/compare/:a_id/:b_id`      | Side-by-side comparison view (`?fuzzy=1` opt-in)  |
 | GET    | `/settings`                 | Tip admin — list, add, edit, delete tips   |
 | POST   | `/settings/tips`            | Save (create or update) a tip              |
 | POST   | `/settings/tips/delete`     | Delete a tip by source ID                  |
