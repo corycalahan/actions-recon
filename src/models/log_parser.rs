@@ -94,6 +94,11 @@ impl LogLevel {
 ///
 /// Handles the format: `2025-04-30T00:53:42.8434646Z ##[debug]message`
 pub fn parse_workflow_log(content: &str) -> Vec<LogEntry> {
+    // GitHub Actions log files often start with a UTF-8 BOM (EF BB BF). If
+    // present on line 1, it shifts the timestamp position and prevents the
+    // timestamp + message parser from recognizing the line. Strip it once at
+    // the start of the content so all downstream parsing works uniformly.
+    let content = content.strip_prefix('\u{FEFF}').unwrap_or(content);
     content
         .lines()
         .enumerate()
@@ -105,6 +110,7 @@ pub fn parse_workflow_log(content: &str) -> Vec<LogEntry> {
 ///
 /// Handles the format: `[2025-04-30 00:53:40Z INFO HostContext] message`
 pub fn parse_runner_log(content: &str) -> Vec<LogEntry> {
+    let content = content.strip_prefix('\u{FEFF}').unwrap_or(content);
     content
         .lines()
         .enumerate()
@@ -118,6 +124,15 @@ pub fn parse_runner_log(content: &str) -> Vec<LogEntry> {
 /// - `actions/checkout@v4`
 /// - `github/codeql-action/init@v3`
 /// - `actions/checkout@08c6903...`
+/// - `octo-org/shared/.github/workflows/build.yml@v1` (reusable workflow)
+///
+/// Skips matches inside `Job defined at:` lines, which point to the workflow
+/// file that defines the current job (metadata about the run itself, not a
+/// dependency the workflow uses). Also skips warning/error/notice entries,
+/// where action refs typically appear inside prose (e.g. deprecation
+/// warnings) and produce false positives like `v4.` from sentence-ending
+/// punctuation. Trailing punctuation on captured refs is trimmed as a
+/// secondary safeguard.
 pub fn extract_action_references(entries: &[LogEntry]) -> Vec<ActionReference> {
     let regex = Regex::new(
         r"(?P<owner>[A-Za-z0-9_.-]+)/(?P<repo>[A-Za-z0-9_.-]+)(?P<path>/[A-Za-z0-9_.\-/]+)?@(?P<reference>[A-Za-z0-9_.\-/]+)",
@@ -128,11 +143,38 @@ pub fn extract_action_references(entries: &[LogEntry]) -> Vec<ActionReference> {
     let mut references = Vec::new();
 
     for entry in entries {
+        // Skip "Job defined at: <owner/repo/.../workflow.yml@ref>" — that's the
+        // location of the workflow file itself, not an action it calls.
+        if entry.message.starts_with("Job defined at:") {
+            continue;
+        }
+        // Skip warnings/errors/notices: these carry prose that frequently
+        // mentions action refs in a sentence (e.g. "...actions/checkout@v4.
+        // Actions will be forced..."), which leads to bogus captures like
+        // "v4." with trailing punctuation. Real action references appear in
+        // info-level lines such as "Run actions/checkout@v4" and
+        // "Download action repository '...@<ref>'".
+        if matches!(
+            entry.level,
+            LogLevel::Warning | LogLevel::Error | LogLevel::Notice
+        ) {
+            continue;
+        }
         for captures in regex.captures_iter(&entry.message) {
             let owner = captures["owner"].to_string();
             let repo = captures["repo"].to_string();
             let path = captures.name("path").map(|m| m.as_str().to_string());
-            let reference = captures["reference"].to_string();
+            // Strip trailing punctuation that can leak in when the regex
+            // matches inside prose (period, comma, semicolon, colon, closing
+            // brackets/quotes). Real refs never end in these characters.
+            let reference = captures["reference"]
+                .trim_end_matches(|c: char| {
+                    matches!(c, '.' | ',' | ';' | ':' | ')' | ']' | '"' | '\'')
+                })
+                .to_string();
+            if reference.is_empty() {
+                continue;
+            }
 
             let key = (owner.clone(), repo.clone(), path.clone(), reference.clone());
             if !seen.insert(key) {
@@ -370,6 +412,17 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_workflow_strips_leading_bom() {
+        // GitHub Actions log files often start with a UTF-8 BOM. The parser
+        // must strip it so line 1's timestamp + message parse correctly.
+        let content = "\u{FEFF}2025-04-30T00:53:44.8073929Z Current runner version: '2.334.0'";
+        let entries = parse_workflow_log(content);
+        let e = &entries[0];
+        assert_eq!(e.timestamp.as_deref(), Some("2025-04-30T00:53:44.8073929Z"));
+        assert_eq!(e.message, "Current runner version: '2.334.0'");
+    }
+
+    #[test]
     fn test_parse_runner_log_line() {
         let line = "[2025-04-30 00:53:40Z INFO Listener] Version: 2.323.0";
         let entries = parse_runner_log(line);
@@ -478,5 +531,70 @@ mod tests {
         assert_eq!(refs.len(), 1);
         assert_eq!(refs[0].owner_repo(), "actions/checkout");
         assert_eq!(refs[0].first_line, 1);
+    }
+
+    #[test]
+    fn test_extract_action_references_skips_job_defined_at() {
+        // The "Job defined at:" line points to the workflow file that defines
+        // the current job, not to a dependency. Filter it out.
+        let entries = parse_workflow_log(
+            "2025-04-30T00:00:00Z Run actions/checkout@v4\n\
+             2025-04-30T00:00:01Z Job defined at: corycalahan/hello-world-workflow/.github/workflows/hello-world.yml@refs/heads/main",
+        );
+
+        let refs = extract_action_references(&entries);
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].owner_repo(), "actions/checkout");
+    }
+
+    #[test]
+    fn test_extract_action_references_keeps_reusable_workflows() {
+        // Reusable workflow calls look like `owner/repo/.github/workflows/x.yml@ref`
+        // and should still be captured — they're real dependencies.
+        let entries = parse_workflow_log(
+            "2025-04-30T00:00:00Z Download action repository 'octo-org/shared/.github/workflows/build.yml@v1'",
+        );
+
+        let refs = extract_action_references(&entries);
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].owner, "octo-org");
+        assert_eq!(refs[0].repo, "shared");
+        assert_eq!(
+            refs[0].path.as_deref(),
+            Some("/.github/workflows/build.yml")
+        );
+        assert_eq!(refs[0].reference, "v1");
+    }
+
+    #[test]
+    fn test_extract_action_references_skips_warning_prose() {
+        // Real-world case from logs_66805516233/0_hello-world.txt: a
+        // deprecation warning mentions "actions/checkout@v4." with a
+        // sentence-ending period. Without the warning skip, the regex
+        // captured "v4." as a separate reference.
+        let entries = parse_workflow_log(
+            "2026-04-29T23:55:40.4172303Z Download action repository 'actions/checkout@v4' (SHA:34e114876b0b11c390a56381ad16ebd13914f8d5)\n\
+             2026-04-29T23:55:40.6646400Z ##[group]Run actions/checkout@v4\n\
+             2026-04-29T23:55:41.5016115Z ##[warning]Node.js 20 actions are deprecated. The following actions are running on Node.js 20 and may not work as expected: actions/checkout@v4. Actions will be forced to run with Node.js 24 by default starting June 2nd, 2026.",
+        );
+
+        let refs = extract_action_references(&entries);
+        assert_eq!(refs.len(), 1, "expected only the legitimate v4 ref");
+        assert_eq!(refs[0].owner_repo(), "actions/checkout");
+        assert_eq!(refs[0].reference, "v4");
+    }
+
+    #[test]
+    fn test_extract_action_references_trims_trailing_punctuation() {
+        // Defense-in-depth: if a non-warning info line ever contains a ref
+        // followed by punctuation, normalize it rather than treating "v4,"
+        // and "v4" as distinct references.
+        let entries = parse_workflow_log(
+            "2025-04-30T00:00:00Z Note: using actions/checkout@v4, then continuing.",
+        );
+
+        let refs = extract_action_references(&entries);
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].reference, "v4");
     }
 }

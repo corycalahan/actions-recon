@@ -58,7 +58,7 @@ pub async fn delete_all(State(config): State<Arc<AppConfig>>) -> Result<Redirect
 }
 
 /// Scan the upload directory for existing analysis folders.
-fn list_analyses(upload_dir: &std::path::Path) -> Vec<String> {
+pub(crate) fn list_analyses(upload_dir: &std::path::Path) -> Vec<String> {
     let Ok(entries) = std::fs::read_dir(upload_dir) else {
         return Vec::new();
     };

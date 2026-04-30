@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}Compare analyses — actions-recon{% endblock %}
+
+{% block content %}
+<section class="compare-form-section">
+    <h1>Compare two analyses</h1>
+    <p class="hint">
+        Pick two existing analyses or upload a pair of
+        <span class="tooltip">workflow log ZIPs
+            <span class="tooltip-text">ZIP archives downloaded from GitHub Actions workflow runs. <a href="https://docs.github.com/en/actions/monitoring-and-troubleshooting-workflows/monitoring-workflows/using-workflow-run-logs#downloading-logs" target="_blank" rel="noopener">Learn more &rarr;</a></span>
+        </span>.
+        The comparison highlights differences in runner type, runner identity, runner image, Azure region, action and reusable workflow versions, diagnostic logs, and step durations.
+    </p>
+
+    <form action="/compare/upload" method="post" enctype="multipart/form-data" class="compare-form">
+        <div class="compare-form-grid">
+            <fieldset class="compare-side">
+                <legend>Side A</legend>
+                {% if !analyses.is_empty() %}
+                <label for="existing_a">Choose an existing analysis</label>
+                <select id="existing_a" name="existing_a">
+                    <option value="">— None —</option>
+                    {% for name in analyses %}
+                    <option value="{{ name }}">{{ name }}.zip</option>
+                    {% endfor %}
+                </select>
+                <p class="compare-or">or</p>
+                {% endif %}
+                <label for="zipfile_a">Upload a .zip file</label>
+                <input type="file" id="zipfile_a" name="zipfile_a" accept=".zip">
+            </fieldset>
+
+            <fieldset class="compare-side">
+                <legend>Side B</legend>
+                {% if !analyses.is_empty() %}
+                <label for="existing_b">Choose an existing analysis</label>
+                <select id="existing_b" name="existing_b">
+                    <option value="">— None —</option>
+                    {% for name in analyses %}
+                    <option value="{{ name }}">{{ name }}.zip</option>
+                    {% endfor %}
+                </select>
+                <p class="compare-or">or</p>
+                {% endif %}
+                <label for="zipfile_b">Upload a .zip file</label>
+                <input type="file" id="zipfile_b" name="zipfile_b" accept=".zip">
+            </fieldset>
+        </div>
+
+        <label class="compare-fuzzy">
+            <input type="checkbox" name="fuzzy" value="1">
+            Fuzzy step matching
+            <span class="tooltip">
+                <span class="tooltip-icon">ⓘ</span>
+                <span class="tooltip-text">Pairs steps across reruns whose normalized names match (digit prefix and .txt stripped, lowercased), even when their leading numbers differ. Useful when steps were reordered.</span>
+            </span>
+        </label>
+
+        <div class="compare-form-actions">
+            <button type="submit">Compare</button>
+            <a href="/" class="btn-back">&larr; Back to Home</a>
+        </div>
+    </form>
+</section>
+{% endblock %}

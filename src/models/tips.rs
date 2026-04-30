@@ -125,6 +125,7 @@ impl TipScope {
 
 /// The check logic for a tip.
 #[derive(Debug, Clone)]
+#[allow(clippy::enum_variant_names)]
 pub enum Check {
     /// Flag every line whose *original log line* (message) matches the regex.
     PatternMatch { regex: Regex },
@@ -253,213 +254,220 @@ fn load_tip_file(path: &Path) -> anyhow::Result<Tip> {
     let applies_to = parse_tip_applies_to(raw.check.applies_to.as_deref())?;
     let enabled = raw.enabled.unwrap_or(true);
 
-    let check =
-        match raw.check.r#type.as_str() {
-            "pattern_match" => {
-                let pat = raw
-                    .check
-                    .pattern
-                    .as_deref()
-                    .ok_or_else(|| anyhow::anyhow!("pattern_match requires 'pattern'"))?;
-                let regex = Regex::new(pat)?;
-                Check::PatternMatch { regex }
+    let check = match raw.check.r#type.as_str() {
+        "pattern_match" => {
+            let pat = raw
+                .check
+                .pattern
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("pattern_match requires 'pattern'"))?;
+            let regex = Regex::new(pat)?;
+            Check::PatternMatch { regex }
+        }
+        "contains_any_patterns" => {
+            let pats = raw
+                .check
+                .patterns
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("contains_any_patterns requires 'patterns'"))?;
+            if pats.is_empty() {
+                anyhow::bail!("contains_any_patterns requires at least one pattern");
             }
-            "contains_any_patterns" => {
-                let pats =
-                    raw.check.patterns.as_ref().ok_or_else(|| {
-                        anyhow::anyhow!("contains_any_patterns requires 'patterns'")
-                    })?;
-                if pats.is_empty() {
-                    anyhow::bail!("contains_any_patterns requires at least one pattern");
-                }
-                let regexes: anyhow::Result<Vec<Regex>> = pats
-                    .iter()
-                    .map(|p| Regex::new(p).map_err(Into::into))
-                    .collect();
-                Check::ContainsAnyPatterns { regexes: regexes? }
+            let regexes: anyhow::Result<Vec<Regex>> = pats
+                .iter()
+                .map(|p| Regex::new(p).map_err(Into::into))
+                .collect();
+            Check::ContainsAnyPatterns { regexes: regexes? }
+        }
+        "time_delta" => {
+            let secs = raw
+                .check
+                .threshold_secs
+                .ok_or_else(|| anyhow::anyhow!("time_delta requires 'threshold_secs'"))?;
+            let mark = match raw.check.mark.as_deref() {
+                Some("first_last") => TimeDeltaMark::FirstLast,
+                Some("last") | None => TimeDeltaMark::Last,
+                Some(other) => anyhow::bail!("Unknown mark type: {other}"),
+            };
+            Check::TimeDelta {
+                threshold_ms: secs as i64 * 1000,
+                mark,
             }
-            "time_delta" => {
-                let secs = raw
-                    .check
-                    .threshold_secs
-                    .ok_or_else(|| anyhow::anyhow!("time_delta requires 'threshold_secs'"))?;
-                let mark = match raw.check.mark.as_deref() {
-                    Some("first_last") => TimeDeltaMark::FirstLast,
-                    Some("last") | None => TimeDeltaMark::Last,
-                    Some(other) => anyhow::bail!("Unknown mark type: {other}"),
-                };
-                Check::TimeDelta {
-                    threshold_ms: secs as i64 * 1000,
-                    mark,
-                }
+        }
+        "time_gap" => {
+            let secs = raw
+                .check
+                .threshold_secs
+                .ok_or_else(|| anyhow::anyhow!("time_gap requires 'threshold_secs'"))?;
+            let mark = match raw.check.mark.as_deref() {
+                Some("first_last") => TimeDeltaMark::FirstLast,
+                Some("last") | None => TimeDeltaMark::Last,
+                Some(other) => anyhow::bail!("Unknown mark type: {other}"),
+            };
+            Check::TimeGap {
+                threshold_ms: secs as i64 * 1000,
+                mark,
             }
-            "time_gap" => {
-                let secs = raw
-                    .check
-                    .threshold_secs
-                    .ok_or_else(|| anyhow::anyhow!("time_gap requires 'threshold_secs'"))?;
-                let mark = match raw.check.mark.as_deref() {
-                    Some("first_last") => TimeDeltaMark::FirstLast,
-                    Some("last") | None => TimeDeltaMark::Last,
-                    Some(other) => anyhow::bail!("Unknown mark type: {other}"),
-                };
-                Check::TimeGap {
-                    threshold_ms: secs as i64 * 1000,
-                    mark,
-                }
+        }
+        "step_duration" => {
+            let step = raw
+                .check
+                .step
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("step_duration requires 'step'"))?
+                .trim()
+                .to_string();
+            if step.is_empty() {
+                anyhow::bail!("step_duration requires non-empty 'step'");
             }
-            "step_duration" => {
-                let step = raw
-                    .check
-                    .step
-                    .as_deref()
-                    .ok_or_else(|| anyhow::anyhow!("step_duration requires 'step'"))?
-                    .trim()
-                    .to_string();
-                if step.is_empty() {
-                    anyhow::bail!("step_duration requires non-empty 'step'");
-                }
-                let secs = raw
-                    .check
-                    .threshold_secs
-                    .ok_or_else(|| anyhow::anyhow!("step_duration requires 'threshold_secs'"))?;
-                let mark = match raw.check.mark.as_deref() {
-                    Some("first_last") => TimeDeltaMark::FirstLast,
-                    Some("last") | None => TimeDeltaMark::Last,
-                    Some(other) => anyhow::bail!("Unknown mark type: {other}"),
-                };
-                Check::StepDuration {
-                    step,
-                    threshold_ms: secs as i64 * 1000,
-                    mark,
-                }
+            let secs = raw
+                .check
+                .threshold_secs
+                .ok_or_else(|| anyhow::anyhow!("step_duration requires 'threshold_secs'"))?;
+            let mark = match raw.check.mark.as_deref() {
+                Some("first_last") => TimeDeltaMark::FirstLast,
+                Some("last") | None => TimeDeltaMark::Last,
+                Some(other) => anyhow::bail!("Unknown mark type: {other}"),
+            };
+            Check::StepDuration {
+                step,
+                threshold_ms: secs as i64 * 1000,
+                mark,
             }
-            "level_count" => {
-                let level_str = raw
-                    .check
-                    .level
-                    .as_deref()
-                    .ok_or_else(|| anyhow::anyhow!("level_count requires 'level'"))?;
-                let level = parse_log_level(level_str)?;
-                let threshold = raw
-                    .check
-                    .threshold
-                    .ok_or_else(|| anyhow::anyhow!("level_count requires 'threshold'"))?;
-                Check::LevelCount { level, threshold }
+        }
+        "level_count" => {
+            let level_str = raw
+                .check
+                .level
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("level_count requires 'level'"))?;
+            let level = parse_log_level(level_str)?;
+            let threshold = raw
+                .check
+                .threshold
+                .ok_or_else(|| anyhow::anyhow!("level_count requires 'threshold'"))?;
+            Check::LevelCount { level, threshold }
+        }
+        "missing_pattern" => {
+            let pat = raw
+                .check
+                .pattern
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("missing_pattern requires 'pattern'"))?;
+            let regex = Regex::new(pat)?;
+            Check::MissingPattern { regex }
+        }
+        "missing_any_pattern" => {
+            let pats = raw
+                .check
+                .patterns
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("missing_any_pattern requires 'patterns'"))?;
+            if pats.is_empty() {
+                anyhow::bail!("missing_any_pattern requires at least one pattern");
             }
-            "missing_pattern" => {
-                let pat = raw
-                    .check
-                    .pattern
-                    .as_deref()
-                    .ok_or_else(|| anyhow::anyhow!("missing_pattern requires 'pattern'"))?;
-                let regex = Regex::new(pat)?;
-                Check::MissingPattern { regex }
+            let regexes: anyhow::Result<Vec<Regex>> = pats
+                .iter()
+                .map(|p| Regex::new(p).map_err(Into::into))
+                .collect();
+            Check::MissingAnyPattern {
+                patterns: pats.clone(),
+                regexes: regexes?,
             }
-            "missing_any_pattern" => {
-                let pats =
-                    raw.check.patterns.as_ref().ok_or_else(|| {
-                        anyhow::anyhow!("missing_any_pattern requires 'patterns'")
-                    })?;
-                if pats.is_empty() {
-                    anyhow::bail!("missing_any_pattern requires at least one pattern");
-                }
-                let regexes: anyhow::Result<Vec<Regex>> = pats
-                    .iter()
-                    .map(|p| Regex::new(p).map_err(Into::into))
-                    .collect();
-                Check::MissingAnyPattern {
-                    patterns: pats.clone(),
-                    regexes: regexes?,
-                }
+        }
+        "version_check" => {
+            let pat = raw
+                .check
+                .pattern
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("version_check requires 'pattern'"))?;
+            let regex = Regex::new(pat)?;
+            if regex.captures_len() < 2 {
+                anyhow::bail!("version_check 'pattern' must contain at least one capture group");
             }
-            "version_check" => {
-                let pat = raw
-                    .check
-                    .pattern
-                    .as_deref()
-                    .ok_or_else(|| anyhow::anyhow!("version_check requires 'pattern'"))?;
-                let regex = Regex::new(pat)?;
-                if regex.captures_len() < 2 {
-                    anyhow::bail!("version_check 'pattern' must contain at least one capture group");
-                }
-                let min_version = raw
-                    .check
-                    .min_version
-                    .as_deref()
-                    .map(parse_version_triple)
-                    .transpose()
-                    .map_err(|e| anyhow::anyhow!("Invalid min_version: {e}"))?;
-                let max_version = raw
-                    .check
-                    .max_version
-                    .as_deref()
-                    .map(parse_version_triple)
-                    .transpose()
-                    .map_err(|e| anyhow::anyhow!("Invalid max_version: {e}"))?;
-                if min_version.is_none() && max_version.is_none() {
-                    anyhow::bail!("version_check requires at least one of 'min_version' or 'max_version'");
-                }
-                Check::VersionCheck { regex, min_version, max_version }
+            let min_version = raw
+                .check
+                .min_version
+                .as_deref()
+                .map(parse_version_triple)
+                .transpose()
+                .map_err(|e| anyhow::anyhow!("Invalid min_version: {e}"))?;
+            let max_version = raw
+                .check
+                .max_version
+                .as_deref()
+                .map(parse_version_triple)
+                .transpose()
+                .map_err(|e| anyhow::anyhow!("Invalid max_version: {e}"))?;
+            if min_version.is_none() && max_version.is_none() {
+                anyhow::bail!(
+                    "version_check requires at least one of 'min_version' or 'max_version'"
+                );
             }
-            "action_version_check" => {
-                let action = raw
-                    .check
-                    .action
-                    .as_deref()
-                    .ok_or_else(|| anyhow::anyhow!("action_version_check requires 'action'"))?
-                    .trim()
-                    .to_string();
-                if action.is_empty() {
-                    anyhow::bail!("action_version_check 'action' must be non-empty");
-                }
-                if !action.contains('/') {
-                    anyhow::bail!(
-                        "action_version_check 'action' must be in 'owner/repo' format, got {action:?}"
-                    );
-                }
-                // Build a regex that matches the download-header line for this action,
-                // regardless of whether the ref is a tag (@v4) or a full/partial SHA.
-                // Covers the older "immutable action package" format and the newer
-                // "action repository" format introduced in 2026.
-                let escaped = regex::escape(&action);
-                let action_regex = Regex::new(&format!(
-                    r"(?:Download immutable action package|Download action repository) '{escaped}@"
-                ))?;
-                // Matches the "Version: X.Y.Z" line that immediately follows (older format).
-                let version_regex = Regex::new(r"^Version: (\d+\.\d+\.\d+)$")?;
-                // Fallback for newer format: extract major version from a tag ref like `@v4`.
-                let tag_version_regex = Regex::new(r"@v(\d+)")?;
-                let min_version = raw
-                    .check
-                    .min_version
-                    .as_deref()
-                    .map(parse_version_triple)
-                    .transpose()
-                    .map_err(|e| anyhow::anyhow!("Invalid min_version: {e}"))?;
-                let max_version = raw
-                    .check
-                    .max_version
-                    .as_deref()
-                    .map(parse_version_triple)
-                    .transpose()
-                    .map_err(|e| anyhow::anyhow!("Invalid max_version: {e}"))?;
-                if min_version.is_none() && max_version.is_none() {
-                    anyhow::bail!(
-                        "action_version_check requires at least one of 'min_version' or 'max_version'"
-                    );
-                }
-                Check::ActionVersionCheck {
-                    action,
-                    action_regex,
-                    version_regex,
-                    tag_version_regex,
-                    min_version,
-                    max_version,
-                }
+            Check::VersionCheck {
+                regex,
+                min_version,
+                max_version,
             }
-            other => anyhow::bail!("Unknown check type: {other}"),
-        };
+        }
+        "action_version_check" => {
+            let action = raw
+                .check
+                .action
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("action_version_check requires 'action'"))?
+                .trim()
+                .to_string();
+            if action.is_empty() {
+                anyhow::bail!("action_version_check 'action' must be non-empty");
+            }
+            if !action.contains('/') {
+                anyhow::bail!(
+                    "action_version_check 'action' must be in 'owner/repo' format, got {action:?}"
+                );
+            }
+            // Build a regex that matches the download-header line for this action,
+            // regardless of whether the ref is a tag (@v4) or a full/partial SHA.
+            // Covers the older "immutable action package" format and the newer
+            // "action repository" format introduced in 2026.
+            let escaped = regex::escape(&action);
+            let action_regex = Regex::new(&format!(
+                r"(?:Download immutable action package|Download action repository) '{escaped}@"
+            ))?;
+            // Matches the "Version: X.Y.Z" line that immediately follows (older format).
+            let version_regex = Regex::new(r"^Version: (\d+\.\d+\.\d+)$")?;
+            // Fallback for newer format: extract major version from a tag ref like `@v4`.
+            let tag_version_regex = Regex::new(r"@v(\d+)")?;
+            let min_version = raw
+                .check
+                .min_version
+                .as_deref()
+                .map(parse_version_triple)
+                .transpose()
+                .map_err(|e| anyhow::anyhow!("Invalid min_version: {e}"))?;
+            let max_version = raw
+                .check
+                .max_version
+                .as_deref()
+                .map(parse_version_triple)
+                .transpose()
+                .map_err(|e| anyhow::anyhow!("Invalid max_version: {e}"))?;
+            if min_version.is_none() && max_version.is_none() {
+                anyhow::bail!(
+                    "action_version_check requires at least one of 'min_version' or 'max_version'"
+                );
+            }
+            Check::ActionVersionCheck {
+                action,
+                action_regex,
+                version_regex,
+                tag_version_regex,
+                min_version,
+                max_version,
+            }
+        }
+        other => anyhow::bail!("Unknown check type: {other}"),
+    };
 
     Ok(Tip {
         id: raw.id,
@@ -730,9 +738,18 @@ pub fn save_tip(input: SaveTipInput<'_>) -> anyhow::Result<()> {
             mark: input.mark.filter(|s| !s.is_empty()).map(|s| s.to_string()),
             level: input.level.filter(|s| !s.is_empty()).map(|s| s.to_string()),
             threshold: input.threshold,
-            min_version: input.min_version.filter(|s| !s.is_empty()).map(|s| s.to_string()),
-            max_version: input.max_version.filter(|s| !s.is_empty()).map(|s| s.to_string()),
-            action: input.action.filter(|s| !s.is_empty()).map(|s| s.to_string()),
+            min_version: input
+                .min_version
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string()),
+            max_version: input
+                .max_version
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string()),
+            action: input
+                .action
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string()),
         },
     };
 
@@ -810,9 +827,15 @@ fn parse_version_triple(s: &str) -> anyhow::Result<[u64; 3]> {
     if parts.len() != 3 {
         anyhow::bail!("expected MAJOR.MINOR.PATCH, got {s:?}");
     }
-    let major = parts[0].parse::<u64>().map_err(|_| anyhow::anyhow!("invalid major in {s:?}"))?;
-    let minor = parts[1].parse::<u64>().map_err(|_| anyhow::anyhow!("invalid minor in {s:?}"))?;
-    let patch = parts[2].parse::<u64>().map_err(|_| anyhow::anyhow!("invalid patch in {s:?}"))?;
+    let major = parts[0]
+        .parse::<u64>()
+        .map_err(|_| anyhow::anyhow!("invalid major in {s:?}"))?;
+    let minor = parts[1]
+        .parse::<u64>()
+        .map_err(|_| anyhow::anyhow!("invalid minor in {s:?}"))?;
+    let patch = parts[2]
+        .parse::<u64>()
+        .map_err(|_| anyhow::anyhow!("invalid patch in {s:?}"))?;
     Ok([major, minor, patch])
 }
 
@@ -1275,7 +1298,11 @@ fn eval_version_check(
             String::new()
         };
 
-        let marked_lines = if triggered { vec![entry.line_number] } else { Vec::new() };
+        let marked_lines = if triggered {
+            vec![entry.line_number]
+        } else {
+            Vec::new()
+        };
 
         return TipResult {
             tip: tip.clone(),
@@ -1307,6 +1334,7 @@ fn eval_version_check(
 ///   `Download action repository 'owner/repo@<ref>' (SHA:...)`
 ///   Version is inferred from the tag portion of `<ref>` (e.g. `v4` → `4.0.0`).
 ///   SHA-only refs without a detectable version tag are skipped.
+#[allow(clippy::too_many_arguments)]
 fn eval_action_version_check(
     tip: &Tip,
     entries: &[LogEntry],
@@ -1338,25 +1366,24 @@ fn eval_action_version_check(
         let Some(ver_entry) = version_entry else {
             // Newer runner format has no separate Version line; fall back to the
             // major version encoded in the tag reference (e.g. `@v4` → 4.0.0).
-            if let Some(caps) = tag_version_regex.captures(&entry.message) {
-                if let Some(major_str) = caps.get(1) {
-                    if let Ok(major) = major_str.as_str().parse::<u64>() {
-                        let found = [major, 0, 0];
-                        let below_min = min_version.is_some_and(|min| found < min);
-                        let above_max = max_version.is_some_and(|max| found > max);
-                        if below_min || above_max {
-                            marked_lines.push(entry.line_number);
-                            if first_detail.is_empty() {
-                                let found_str = format_version(found);
-                                first_detail = if below_min {
-                                    let min_str = format_version(min_version.unwrap());
-                                    format!("{action} version {found_str} is below minimum {min_str}")
-                                } else {
-                                    let max_str = format_version(max_version.unwrap());
-                                    format!("{action} version {found_str} is above maximum {max_str}")
-                                };
-                            }
-                        }
+            if let Some(caps) = tag_version_regex.captures(&entry.message)
+                && let Some(major_str) = caps.get(1)
+                && let Ok(major) = major_str.as_str().parse::<u64>()
+            {
+                let found = [major, 0, 0];
+                let below_min = min_version.is_some_and(|min| found < min);
+                let above_max = max_version.is_some_and(|max| found > max);
+                if below_min || above_max {
+                    marked_lines.push(entry.line_number);
+                    if first_detail.is_empty() {
+                        let found_str = format_version(found);
+                        first_detail = if below_min {
+                            let min_str = format_version(min_version.unwrap());
+                            format!("{action} version {found_str} is below minimum {min_str}")
+                        } else {
+                            let max_str = format_version(max_version.unwrap());
+                            format!("{action} version {found_str} is above maximum {max_str}")
+                        };
                     }
                 }
             }
@@ -1970,7 +1997,10 @@ pattern = "error"
         let tip = action_version_check_tip("actions/checkout", "6.0.0");
         let results = evaluate_tips_for_log(&[tip], &entries, LogKind::Workflow);
         assert_eq!(results.len(), 1);
-        assert!(!results[0].triggered, "v6 should not trigger on 6.0.0 floor");
+        assert!(
+            !results[0].triggered,
+            "v6 should not trigger on 6.0.0 floor"
+        );
     }
 
     #[test]
@@ -1981,7 +2011,10 @@ pattern = "error"
         let tip = action_version_check_tip("actions/checkout", "6.0.0");
         let results = evaluate_tips_for_log(&[tip], &entries, LogKind::Workflow);
         assert_eq!(results.len(), 1);
-        assert!(!results[0].triggered, "bare SHA ref should not trigger (version unknown)");
+        assert!(
+            !results[0].triggered,
+            "bare SHA ref should not trigger (version unknown)"
+        );
     }
 
     #[test]

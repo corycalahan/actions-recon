@@ -7,6 +7,63 @@ use axum::response::Redirect;
 use crate::config::AppConfig;
 use crate::extract::zip_extract;
 
+/// Sanitize an analysis ID derived from an uploaded filename.
+///
+/// Only allows alphanumeric, hyphens, and underscores. Returns the same
+/// `BadRequest` style error used by the upload handler so all callers share
+/// one rejection message.
+pub(crate) fn sanitize_analysis_id(filename: &str, analysis_id: &str) -> Result<(), UploadError> {
+    if !analysis_id
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(UploadError::BadRequest(format!(
+            "Invalid filename '{filename}': only alphanumeric characters, hyphens, and underscores are allowed."
+        )));
+    }
+    Ok(())
+}
+
+/// Derive the analysis ID from a filename's stem.
+pub(crate) fn analysis_id_from_filename(filename: &str) -> String {
+    PathBuf::from(filename)
+        .file_stem()
+        .and_then(|s| s.to_str().map(String::from))
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+/// Extract a single uploaded ZIP into `<upload_dir>/<analysis_id>/`.
+///
+/// Runs the extraction inside `tokio::task::spawn_blocking` so it does not
+/// block the runtime. Auto-extracts nested ZIPs (e.g. runner-diagnostic-logs).
+pub(crate) async fn extract_uploaded_zip(
+    upload_dir: &std::path::Path,
+    analysis_id: &str,
+    data: Vec<u8>,
+) -> Result<zip_extract::ExtractResult, UploadError> {
+    let output_dir = upload_dir.join(analysis_id);
+    let bytes = data.len();
+    tracing::info!(analysis_id = %analysis_id, bytes, "Processing upload");
+
+    let result = tokio::task::spawn_blocking(move || {
+        let result = zip_extract::extract_zip(&data, &output_dir)?;
+        zip_extract::extract_nested_zips(&output_dir);
+        Ok::<_, zip_extract::ExtractError>(result)
+    })
+    .await
+    .map_err(|e| UploadError::Internal(format!("Task join error: {e}")))?
+    .map_err(UploadError::Extraction)?;
+
+    tracing::info!(
+        analysis_id = %analysis_id,
+        files = result.file_count,
+        total_bytes = result.total_bytes,
+        "Upload extracted successfully"
+    );
+
+    Ok(result)
+}
+
 /// `POST /upload` — accept a ZIP file upload, extract it, redirect to the analysis page.
 pub async fn upload(
     State(config): State<Arc<AppConfig>>,
@@ -35,43 +92,9 @@ pub async fn upload(
         UploadError::BadRequest("No file field named 'zipfile' found in the upload.".into())
     })?;
 
-    // Derive the analysis ID from the filename stem
-    let analysis_id = PathBuf::from(&filename)
-        .file_stem()
-        .and_then(|s| s.to_str().map(String::from))
-        .unwrap_or_else(|| "unknown".to_string());
-
-    // Sanitize the ID: only allow alphanumeric, hyphens, underscores
-    if !analysis_id
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-    {
-        return Err(UploadError::BadRequest(format!(
-            "Invalid filename '{filename}': only alphanumeric characters, hyphens, and underscores are allowed."
-        )));
-    }
-
-    let output_dir = config.upload_dir.join(&analysis_id);
-
-    tracing::info!(analysis_id = %analysis_id, filename = %filename, bytes = data.len(), "Processing upload");
-
-    // Extract the ZIP — run in a blocking task since it does filesystem I/O
-    let result = tokio::task::spawn_blocking(move || {
-        let result = zip_extract::extract_zip(&data, &output_dir)?;
-        // Auto-extract nested ZIPs (e.g. runner-diagnostic-logs/*.zip)
-        zip_extract::extract_nested_zips(&output_dir);
-        Ok::<_, zip_extract::ExtractError>(result)
-    })
-    .await
-    .map_err(|e| UploadError::Internal(format!("Task join error: {e}")))?
-    .map_err(UploadError::Extraction)?;
-
-    tracing::info!(
-        analysis_id = %analysis_id,
-        files = result.file_count,
-        total_bytes = result.total_bytes,
-        "Upload extracted successfully"
-    );
+    let analysis_id = analysis_id_from_filename(&filename);
+    sanitize_analysis_id(&filename, &analysis_id)?;
+    extract_uploaded_zip(&config.upload_dir, &analysis_id, data).await?;
 
     Ok(Redirect::to(&format!("/analysis/{analysis_id}")))
 }
