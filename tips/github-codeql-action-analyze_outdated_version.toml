@@ -4,7 +4,7 @@ name  = "Newer version of github/codeql-action/analyze available"
 emoji = "⬆️"
 docs  = "https://github.com/github/codeql-action/releases"
 created = "2026-02-19"
-updated = "2026-04-20"
+updated = "2026-05-04"
 
 description = """
 The workflow is using an outdated version of github/codeql-action/analyze.
@@ -30,7 +30,7 @@ See the releases page for the full changelog:
   https://github.com/github/codeql-action/releases
 
 Update the min_version field in this tip file when a new major version ships:
-  Latest as of 2026-04-20: v4.35.2
+  Latest as of 2026-05-04: v4.35.3
 """
 
 [check]
