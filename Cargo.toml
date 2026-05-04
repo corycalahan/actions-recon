@@ -11,7 +11,7 @@ tower = "0.5"
 tower-http = { version = "0.6", features = ["fs"] }
 
 # Templates
-askama = "0.15"
+askama = "0.16"
 
 # CLI
 clap = { version = "4", features = ["derive"] }
