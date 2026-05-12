@@ -4,7 +4,7 @@ name  = "Newer version of actions/labeler available"
 emoji = "⬆️"
 docs  = "https://github.com/actions/labeler/releases"
 created = "2026-02-19"
-updated = "2026-02-19"
+updated = "2026-05-11"
 
 description = """
 The workflow is using an outdated version of actions/labeler.
@@ -31,7 +31,7 @@ See the releases page for the full changelog:
   https://github.com/actions/labeler/releases
 
 Update the min_version field in this tip file when a new major version ships:
-  Latest as of 2026-02-19: v6.0.1
+  Latest as of 2026-05-11: v6.1.0
 """
 
 [check]
