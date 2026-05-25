@@ -4,11 +4,11 @@ name  = "Newer version of github/dependabot-action available"
 emoji = "⬆️"
 docs  = "https://github.com/github/dependabot-action/releases"
 created = "2026-02-19"
-updated = "2026-05-18"
+updated = "2026-05-25"
 
 description = """
 The workflow is using an outdated version of github/dependabot-action.
-The latest version available is v2 (currently v2.30.0).
+The latest version available is v3 (currently v3.1.0).
 
 Note: The latest version shown here applies to GitHub.com (dotcom).
 GitHub Enterprise Server (GHES) bundles its own set of action versions —
@@ -24,13 +24,13 @@ All releases are on the v2 major line. The rolling @v2 tag always points
 to the latest stable release.
 
 Consider updating your workflow YAML:
-  uses: github/dependabot-action@v2
+  uses: github/dependabot-action@v3
 
 See the releases page for the full changelog:
   https://github.com/github/dependabot-action/releases
 
 Update the min_version field in this tip file when a new major version ships:
-  Latest as of 2026-05-18: v2.33.0
+  Latest as of 2026-05-25: v3.1.0
 """
 
 [check]
@@ -41,4 +41,4 @@ scope = "workflow"
 # All releases are v2.x; min_version tracks the major line.
 # Update min_version if a v3+ is ever released.
 action      = "github/dependabot-action"
-min_version = "2.0.0"
+min_version = "3.0.0"
