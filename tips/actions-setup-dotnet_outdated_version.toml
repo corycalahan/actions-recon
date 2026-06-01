@@ -4,7 +4,7 @@ name  = "Newer version of actions/setup-dotnet available"
 emoji = "⬆️"
 docs  = "https://github.com/actions/setup-dotnet/releases"
 created = "2026-02-19"
-updated = "2026-03-09"
+updated = "2026-06-01"
 
 description = """
 The workflow is using an outdated version of actions/setup-dotnet.
@@ -28,7 +28,7 @@ See the releases page for the full changelog:
   https://github.com/actions/setup-dotnet/releases
 
 Update the min_version field in this tip file when a new major version ships:
-  Latest as of 2026-03-09: v5.2.0
+  Latest as of 2026-06-01: v5.3.0
 """
 
 [check]
