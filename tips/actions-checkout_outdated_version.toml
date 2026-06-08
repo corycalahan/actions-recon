@@ -4,7 +4,7 @@ name  = "Newer version of actions/checkout available"
 emoji = "⬆️"
 docs  = "https://github.com/actions/checkout/releases"
 created = "2026-02-18"
-updated = "2026-02-18"
+updated = "2026-06-08"
 
 description = """
 The workflow is using an outdated version of actions/checkout.
@@ -24,7 +24,7 @@ See the releases page for the full changelog:
   https://github.com/actions/checkout/releases
 
 Update the min_version field in this tip file when a new major version ships:
-  Latest as of 2026-02-18: v6.0.2
+  Latest as of 2026-06-08: v6.0.3
 """
 
 [check]

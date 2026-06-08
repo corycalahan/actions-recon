@@ -4,7 +4,7 @@ name  = "Newer version of github/codeql-action/autobuild available"
 emoji = "⬆️"
 docs  = "https://github.com/github/codeql-action/releases"
 created = "2026-02-19"
-updated = "2026-05-25"
+updated = "2026-06-08"
 
 description = """
 The workflow is using an outdated version of github/codeql-action/autobuild.
@@ -30,7 +30,7 @@ See the releases page for the full changelog:
   https://github.com/github/codeql-action/releases
 
 Update the min_version field in this tip file when a new major version ships:
-  Latest as of 2026-05-25: v4.36.0
+  Latest as of 2026-06-08: v4.36.2
 """
 
 [check]
