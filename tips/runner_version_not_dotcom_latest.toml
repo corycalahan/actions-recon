@@ -4,7 +4,7 @@ name  = "Runner Not at Latest Version"
 emoji = "🔄"
 docs  = "https://github.com/actions/runner/releases"
 created = "2026-02-18"
-updated = "2026-04-27"
+updated = "2026-06-15"
 
 description = """
 The runner version is below the latest release available for GitHub.com (dotcom).
@@ -22,7 +22,7 @@ may not yet be available/deployed to all enterprises, organizations,
 or repositories.
 
 Update the min_version field in this tip file when a new runner version ships:
-  Latest as of 2026-04-27: 2.334.0
+  Latest as of 2026-06-15: 2.335.1
 """
 
 [check]
@@ -33,4 +33,4 @@ scope = "all"
 pattern = "Current runner version: '(\\d+\\.\\d+\\.\\d+)'"
 # Update this value when a new runner release ships on github.com.
 # See: https://github.com/actions/runner/releases
-min_version = "2.334.0"
+min_version = "2.335.1"
