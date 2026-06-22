@@ -11,6 +11,11 @@ on:
         required: false
         default: false
         type: boolean
+      allow_floor_decrease:
+        description: 'Allow the GHES floor to decrease (normally non-decreasing)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -89,26 +94,36 @@ jobs:
           echo "Runner table rows found:"
           echo "${RUNNER_TABLE}"
 
-          # Dynamically determine how many GHES versions are currently supported
-          # by fetching the release dates JSON from the docs repo and counting
-          # versions that have already GA'd and haven't hit their deprecation date.
-          # https://github.com/github/docs/blob/main/src/ghes-releases/lib/enterprise-dates.json
-          TODAY=$(date --utc +%Y-%m-%d)
-          DATES_JSON=$(
+          # Determine the supported GHES releases from the same authoritative
+          # source github/docs uses to render the "Supported" (check/X) column:
+          # the hard-coded `supported` array in enterprise-server-releases.ts.
+          #
+          # We deliberately do NOT infer support from enterprise-dates.json
+          # deprecationDate comparisons. That date is a *scheduled* value that
+          # leads/lags the actual `supported` array around deprecation boundaries,
+          # which produced a spurious floor drop (3.17 -> 3.16) in #51.
+          # https://github.com/github/docs/blob/main/src/versions/lib/enterprise-server-releases.ts
+          RELEASES_TS=$(
             curl --silent --location \
-              "https://raw.githubusercontent.com/github/docs/main/src/ghes-releases/lib/enterprise-dates.json"
+              "https://raw.githubusercontent.com/github/docs/main/src/versions/lib/enterprise-server-releases.ts"
           )
-          # Filter to supported versions once, then derive count and list from that result.
+          # Extract the contents of `export const supported = [ ... ]` and pull out
+          # the X.Y release numbers, ASCENDING version-sorted so .[0] is the oldest.
           SUPPORTED_VERSIONS_JSON=$(
-            echo "${DATES_JSON}" \
-              | jq --arg today "${TODAY}" \
-                  '[to_entries[]
-                    | select(.key | test("^[0-9]+\\.[0-9]+$"))
-                    | select(.value.generalAvailabilityDate != null and .value.generalAvailabilityDate <= $today)
-                    | select(.value.deprecationDate > $today)
-                    | .key
-                  ] | sort'
+            printf '%s' "${RELEASES_TS}" \
+              | tr '\n' ' ' \
+              | grep --extended-regexp --only-matching "export const supported = \[[^]]*\]" \
+              | grep --extended-regexp --only-matching "[0-9]+\.[0-9]+" \
+              | sort --version-sort \
+              | jq --raw-input . | jq --slurp '.'
           )
+          # Guard against a parse failure (schema drift, renamed export, network
+          # error). Without a supported set we cannot compute a floor.
+          if [ "$(echo "${SUPPORTED_VERSIONS_JSON}" | jq 'length')" -eq 0 ]; then
+            echo "ERROR: could not parse 'supported' array from enterprise-server-releases.ts" >&2
+            echo "       (check the export still exists at the expected URL)" >&2
+            exit 1
+          fi
           SUPPORTED_COUNT=$(echo "${SUPPORTED_VERSIONS_JSON}" | jq 'length')
           SUPPORTED_LIST=$(echo "${SUPPORTED_VERSIONS_JSON}"  | jq --raw-output 'join(", ")')
           echo "Currently supported GHES releases (${SUPPORTED_COUNT}): ${SUPPORTED_LIST}"
@@ -125,8 +140,8 @@ jobs:
           )
 
           # Filter to only rows whose GHES version is actually in the supported set.
-          # This avoids pulling in deprecated GHES releases when the docs table and
-          # enterprise-dates.json are temporarily out of sync.
+          # This avoids pulling in deprecated GHES releases when the docs runner
+          # table still lists versions that have left the `supported` array.
           SUPPORTED_ROWS=$(
             echo "${PARSED_ROWS}" \
               | while IFS=' ' read -r ghes_ver runner_ver; do
@@ -153,7 +168,7 @@ jobs:
           # the tip file the same way a null dotcom version does.
           if ! printf '%s' "${FLOOR_VERSION}" | grep --quiet --extended-regexp '^[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "ERROR: parsed GHES floor runner version is not valid semver: '${FLOOR_VERSION}'" >&2
-            echo "       (check the github/docs all-releases table and enterprise-dates.json)" >&2
+            echo "       (check the github/docs all-releases runner table and enterprise-server-releases.ts)" >&2
             exit 1
           fi
 
@@ -204,6 +219,10 @@ jobs:
       # -----------------------------------------------------------------------
       - name: Determine if updates are needed
         id: diff
+        env:
+          NEW_FLOOR:      ${{ steps.ghes.outputs.floor_version }}
+          CUR_FLOOR:      ${{ steps.current.outputs.ghes_floor }}
+          ALLOW_DECREASE: ${{ inputs.allow_floor_decrease }}
         run: |
           NEED_DOTCOM=false
           NEED_GHES=false
@@ -213,6 +232,22 @@ jobs:
           if [ "${{ steps.ghes.outputs.floor_version }}" != "${{ steps.current.outputs.ghes_floor }}" ]; then
             NEED_GHES=true
           fi
+
+          # Safety guard: the GHES floor (min runner for the oldest supported
+          # release) is non-decreasing in normal operation; deprecations only
+          # raise it. A decrease almost always signals upstream data drift, so
+          # fail unless explicitly overridden. On schedule ALLOW_DECREASE is
+          # empty, so the guard stays active for the weekly cron.
+          if [ "${NEED_GHES}" = "true" ] && [ "${NEW_FLOOR}" != "${CUR_FLOOR}" ]; then
+            LOWER=$(printf '%s\n%s\n' "${CUR_FLOOR}" "${NEW_FLOOR}" | sort --version-sort | head --lines=1)
+            if [ "${LOWER}" = "${NEW_FLOOR}" ] && [ "${ALLOW_DECREASE}" != "true" ]; then
+              echo "ERROR: computed GHES floor ${NEW_FLOOR} is LOWER than current ${CUR_FLOOR}." >&2
+              echo "       The floor should not decrease. If this is intentional," >&2
+              echo "       re-run with allow_floor_decrease=true." >&2
+              exit 1
+            fi
+          fi
+
           echo "need_dotcom=${NEED_DOTCOM}" >> "${GITHUB_OUTPUT}"
           echo "need_ghes=${NEED_GHES}"     >> "${GITHUB_OUTPUT}"
           echo "Need dotcom update : ${NEED_DOTCOM}"
