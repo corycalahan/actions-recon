@@ -29,14 +29,29 @@ jobs:
       # -----------------------------------------------------------------------
       - name: Fetch latest dotcom runner version
         id: dotcom
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          # Authenticate the REST call. Unauthenticated requests share a 60/hr
+          # per-IP limit and, when throttled, return an error object with no
+          # `.tag_name` — which jq -r renders as the literal string "null".
           LATEST_DOTCOM=$(
             curl --silent --location \
+              --header "Authorization: Bearer ${GH_TOKEN}" \
               --header "Accept: application/vnd.github+json" \
               --header "X-GitHub-Api-Version: 2022-11-28" \
               "https://api.github.com/repos/actions/runner/releases/latest" \
               | jq --raw-output '.tag_name | ltrimstr("v")'
           )
+
+          # Fail loudly on a bad fetch (null/empty/error) instead of writing
+          # garbage like min_version = "null" into the tip file downstream.
+          if ! printf '%s' "${LATEST_DOTCOM}" | grep --quiet --extended-regexp '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "ERROR: fetched dotcom runner version is not valid semver: '${LATEST_DOTCOM}'" >&2
+            echo "       (likely a rate-limited or failed api.github.com response)" >&2
+            exit 1
+          fi
+
           echo "version=${LATEST_DOTCOM}" >> "${GITHUB_OUTPUT}"
           echo "Latest dotcom runner version: ${LATEST_DOTCOM}"
 
@@ -132,6 +147,15 @@ jobs:
           )
 
           OLDEST_GHES=$(echo "${SUPPORTED_VERSIONS_JSON}" | jq --raw-output '.[0]')
+
+          # Guard against a bad parse (empty docs table, network failure, schema
+          # drift). Without this, an empty FLOOR_VERSION would silently corrupt
+          # the tip file the same way a null dotcom version does.
+          if ! printf '%s' "${FLOOR_VERSION}" | grep --quiet --extended-regexp '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "ERROR: parsed GHES floor runner version is not valid semver: '${FLOOR_VERSION}'" >&2
+            echo "       (check the github/docs all-releases table and enterprise-dates.json)" >&2
+            exit 1
+          fi
 
           # Build the formatted GHES → runner min-version table for embedding in
           # the TOML description. List newest first (descending) to match existing style.
