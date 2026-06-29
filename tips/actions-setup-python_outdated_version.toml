@@ -4,7 +4,7 @@ name  = "Newer version of actions/setup-python available"
 emoji = "⬆️"
 docs  = "https://github.com/actions/setup-python/releases"
 created = "2026-02-18"
-updated = "2026-02-18"
+updated = "2026-06-29"
 
 description = """
 The workflow is using an outdated version of actions/setup-python.
@@ -24,7 +24,7 @@ See the releases page for the full changelog:
   https://github.com/actions/setup-python/releases
 
 Update the min_version field in this tip file when a new major version ships:
-  Latest as of 2026-02-18: v6.2.0
+  Latest as of 2026-06-29: v6.3.0
 """
 
 [check]
