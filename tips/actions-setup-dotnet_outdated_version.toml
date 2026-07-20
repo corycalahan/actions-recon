@@ -4,11 +4,11 @@ name  = "Newer version of actions/setup-dotnet available"
 emoji = "⬆️"
 docs  = "https://github.com/actions/setup-dotnet/releases"
 created = "2026-02-19"
-updated = "2026-06-29"
+updated = "2026-07-20"
 
 description = """
 The workflow is using an outdated version of actions/setup-dotnet.
-The latest major version available is v5.
+The latest major version available is v6.
 
 Note: The latest version shown here applies to GitHub.com (dotcom).
 GitHub Enterprise Server (GHES) bundles its own set of action versions —
@@ -22,13 +22,13 @@ Older major versions may be missing bug fixes, security patches, or
 support for newer runner features (e.g. Node.js 24 runtime).
 
 Consider updating your workflow YAML:
-  uses: actions/setup-dotnet@v5
+  uses: actions/setup-dotnet@v6
 
 See the releases page for the full changelog:
   https://github.com/actions/setup-dotnet/releases
 
 Update the min_version field in this tip file when a new major version ships:
-  Latest as of 2026-06-29: v5.4.0
+  Latest as of 2026-07-20: v6.0.0
 """
 
 [check]
@@ -38,4 +38,4 @@ scope = "workflow"
 # header, so it works for both tag-pinned and SHA-pinned references.
 # Update min_version when the minimum major version advances.
 action      = "actions/setup-dotnet"
-min_version = "5.0.0"
+min_version = "6.0.0"

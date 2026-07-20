@@ -4,11 +4,11 @@ name  = "Newer version of actions/setup-go available"
 emoji = "⬆️"
 docs  = "https://github.com/actions/setup-go/releases"
 created = "2026-02-18"
-updated = "2026-06-29"
+updated = "2026-07-20"
 
 description = """
 The workflow is using an outdated version of actions/setup-go.
-The latest major version available is v6.
+The latest major version available is v7.
 
 Note: The latest version shown here applies to GitHub.com (dotcom).
 GitHub Enterprise Server (GHES) bundles its own set of action versions —
@@ -19,13 +19,13 @@ module caching improvements, or contain known issues resolved in later
 releases.
 
 Consider updating your workflow YAML:
-  uses: actions/setup-go@v6
+  uses: actions/setup-go@v7
 
 See the releases page for the full changelog:
   https://github.com/actions/setup-go/releases
 
 Update the min_version field in this tip file when a new major version ships:
-  Latest as of 2026-06-29: v6.5.0
+  Latest as of 2026-07-20: v7.0.0
 """
 
 [check]
@@ -35,4 +35,4 @@ scope = "workflow"
 # header, so it works for both tag-pinned and SHA-pinned references.
 # Update min_version when the minimum major version advances.
 action      = "actions/setup-go"
-min_version = "6.0.0"
+min_version = "7.0.0"
