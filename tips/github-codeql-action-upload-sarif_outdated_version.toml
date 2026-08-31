@@ -4,7 +4,7 @@ name  = "Newer version of github/codeql-action/upload-sarif available"
 emoji = "⬆️"
 docs  = "https://github.com/github/codeql-action/releases"
 created = "2026-02-19"
-updated = "2026-08-24"
+updated = "2026-08-31"
 
 description = """
 The workflow is using an outdated version of github/codeql-action/upload-sarif.
@@ -30,7 +30,7 @@ See the releases page for the full changelog:
   https://github.com/github/codeql-action/releases
 
 Update the min_version field in this tip file when a new major version ships:
-  Latest as of 2026-08-24: v4.37.8
+  Latest as of 2026-08-31: v4.37.9
 """
 
 [check]
