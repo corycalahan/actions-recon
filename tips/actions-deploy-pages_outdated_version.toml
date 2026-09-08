@@ -4,7 +4,7 @@ name  = "Newer version of actions/deploy-pages available"
 emoji = "⬆️"
 docs  = "https://github.com/actions/deploy-pages/releases"
 created = "2026-02-19"
-updated = "2026-03-30"
+updated = "2026-09-07"
 
 description = """
 The workflow is using an outdated version of actions/deploy-pages.
@@ -31,7 +31,7 @@ See the releases page for the full changelog:
   https://github.com/actions/deploy-pages/releases
 
 Update the min_version field in this tip file when a new major version ships:
-  Latest as of 2026-03-30: v5.0.0
+  Latest as of 2026-09-07: v5.0.1
 """
 
 [check]
