@@ -84,7 +84,7 @@ pub fn extract_zip(zip_bytes: &[u8], output_dir: &Path) -> Result<ExtractResult,
 
     for i in 0..entry_count {
         let mut entry = archive.by_index(i)?;
-        let entry_name = entry.name().to_string();
+        let entry_name = entry.name()?.into_owned();
 
         // Reject symlinks
         if entry.is_symlink() {
