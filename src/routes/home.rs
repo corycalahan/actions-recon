@@ -15,7 +15,10 @@ struct HomeTemplate {
 }
 
 /// `GET /` — home page: upload form + list of previous analyses + delete-all button.
-pub async fn index(State(config): State<Arc<AppConfig>>) -> Result<Html<String>, String> {
+// Keep the `State` wrapper (do not destructure `State(config)`): CodeQL's axum
+// model treats handler params as remote input and only excludes `State`
+// contents when the wrapper is kept. `upload_dir` comes from CLI/env config.
+pub async fn index(config: State<Arc<AppConfig>>) -> Result<Html<String>, String> {
     let analyses = list_analyses(&config.upload_dir);
     let upload_path = config
         .upload_dir
